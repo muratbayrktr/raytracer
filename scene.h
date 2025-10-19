@@ -2,14 +2,21 @@
 #define __SCENE__
 
 #include "scene.h"
+#include "json.hpp"
 #include <string>
 #include <vector>
 
 namespace scene {
+    using json = nlohmann::json;
+
     /*
     * Atomic vector types
     * I am defining these structs to have a simple and faster access to the data.
     */
+   struct VectorIntPair {
+        int x, y;
+   };
+
     struct VectorFloatTriplet {
         float x, y, z;
     };
@@ -43,7 +50,7 @@ namespace scene {
         VectorFloatTriplet up;
         VectorFloatQuad nearPlane;
         float nearDistance;
-        unsigned int imageResolution[2];
+        VectorIntPair imageResolution;
         std::string imageName;
     };
 
@@ -109,6 +116,10 @@ namespace scene {
         void loadSceneFromFile(const std::string& filename);
     };
 
+    Camera parseCamera(const json& cameraData);
+    PointLight parsePointLight(const json& pointLightData);
+    Material parseMaterial(const json& materialData);
+    
 }
 
 #endif
