@@ -1,0 +1,14 @@
+# Executable
+raytracer
+
+# Outputs
+*.ppm
+
+# Inputs
+*.json
+
+# Logs
+*.log
+
+# Error logs
+*.err
