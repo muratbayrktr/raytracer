@@ -5,6 +5,7 @@
 #include "json.hpp"
 #include <string>
 #include <vector>
+#include <map>
 
 namespace scene {
     using json = nlohmann::json;
@@ -31,12 +32,6 @@ namespace scene {
 
     struct VectorIntQuad {
         int x, y, z, w;
-    };
-
-    struct VertexData {
-        std::string _type;
-        std::vector<float> data; // arbitrary number of floats, dataSize for fast access
-        unsigned int dataSize;
     };
 
     /*
@@ -73,28 +68,25 @@ namespace scene {
         float phongExponent;
     };
 
-    struct Mesh {
-        unsigned int _id;
-        Material* material; // Define materials once, use pointer to access
-        VertexData faces;
-    };
-
-    struct Triangle {
+    struct Object {
         unsigned int _id;
         Material* material;
+    };
+
+    struct Mesh : public Object {
+        std::vector<int> faces;
+    };
+
+    struct Triangle : public Object {
         VectorFloatTriplet indices;
     };
 
-    struct Sphere {
-        unsigned int _id;
-        Material* material;
+    struct Sphere : public Object {
         float center;
         float radius;
     };
 
-    struct Plane {
-        unsigned int _id;
-        Material* material;
+    struct Plane : public Object {
         float point;
         VectorFloatTriplet normal;
     };
@@ -107,19 +99,32 @@ namespace scene {
         AmbientLight ambientLight;
         std::vector<PointLight> pointLights;
         std::vector<Material> materials;
-        VertexData vertexData;
+        std::map<unsigned int, size_t> materialIdToIndex;
+        std::vector<VectorFloatTriplet> vertices;
         std::vector<Mesh> meshes;
         std::vector<Triangle> triangles;
         std::vector<Sphere> spheres;
         std::vector<Plane> planes;
 
         void loadSceneFromFile(const std::string& filename);
+        
+        Material* getMaterialById(unsigned int id);
+        
+        template<typename T> 
+        std::vector<T> parseObjects(const json& objectsData);
+
+        template<typename T>
+        void parseSpecificAttributes(T& object, const json& objectData);
+
+        void getSummary();
     };
 
     Camera parseCamera(const json& cameraData);
     PointLight parsePointLight(const json& pointLightData);
     Material parseMaterial(const json& materialData);
-    
+    std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
+    std::vector<int> parseFaces(const json& facesData);
+    Object parseObject(const json& objectData);
 }
 
 #endif

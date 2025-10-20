@@ -16,7 +16,8 @@ void verbose(const std::string& message) {
     }
 }
 
-template <typename T> T parseSingleValue(const std::string& value) {
+template <typename T> 
+T parseSingleValue(const std::string& value) {
     T parsedValue;
     std::istringstream stream(value);
     stream >> parsedValue;
@@ -24,7 +25,8 @@ template <typename T> T parseSingleValue(const std::string& value) {
     return parsedValue;
 }
 
-template <typename T> T parsePair(const std::string& value) {
+template <typename T> 
+T parsePair(const std::string& value) {
     T parsedValue;
     std::istringstream stream(value);
     stream >> parsedValue.x >> parsedValue.y;
@@ -32,7 +34,8 @@ template <typename T> T parsePair(const std::string& value) {
     return parsedValue;
 }
 
-template <typename T> T parseTriplet(const std::string& value) {
+template <typename T> 
+T parseTriplet(const std::string& value) {
     T triplet;
     std::istringstream stream(value);
     stream >> triplet.x >> triplet.y >> triplet.z;
@@ -40,7 +43,8 @@ template <typename T> T parseTriplet(const std::string& value) {
     return triplet;
 }
 
-template <typename T> T parseQuad(const std::string& value) {
+template <typename T> 
+T parseQuad(const std::string& value) {
     T quad;
     std::istringstream stream(value);
     stream >> quad.x >> quad.y >> quad.z >> quad.w;
@@ -164,6 +168,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
                 scene::Material newMaterial = parseMaterial(materialData);
                 if (newMaterial._id != 0) {
                     this->materials.push_back(newMaterial);
+                    this->materialIdToIndex[newMaterial._id] = this->materials.size() - 1;
                     verbose("[+] Material Parsed: " + std::to_string(newMaterial._id));
                 } else {
                     verbose("[!] Skipping Material Parsing. Reason: Material ID is 0");
@@ -173,6 +178,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
             scene::Material newMaterial = parseMaterial(materialDataArray);
             if (newMaterial._id != 0) {
                 this->materials.push_back(newMaterial);
+                this->materialIdToIndex[newMaterial._id] = this->materials.size() - 1;
                 verbose("[+] Material Parsed: " + std::to_string(newMaterial._id));
             }
         }
@@ -180,6 +186,43 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         verbose("[!] Skipping Materials Parsing. Reason: Not found in the scene file. Assigning default value: 0");
     }
 
+    if (scene.contains("VertexData") && !scene["VertexData"].is_null()) {
+        auto vertexData = scene["VertexData"];
+        auto vertexDataArray = vertexData["_data"];
+        if (vertexDataArray.is_array()) {
+            for (auto vertexData : vertexDataArray) {
+                try {
+                    std::vector<VectorFloatTriplet> vertices = parseVertex(vertexData);
+                    this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
+                    verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
+                } catch (const std::exception& e) {
+                    verbose("[!] Skipping Vertex Parsing. Reason: " + std::string(e.what()));
+                }   
+            }
+        } else {
+            std::vector<VectorFloatTriplet> vertices = parseVertex(vertexDataArray);
+            this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
+            verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
+        }
+    }
+
+    if (scene.contains("Objects") && !scene["Objects"].is_null()) {
+        auto objects = scene["Objects"];
+        auto meshes = objects["Mesh"];
+        auto triangles = objects["Triangle"];
+        auto spheres = objects["Sphere"];
+        auto planes = objects["Plane"];
+
+        this->meshes = parseObjects<scene::Mesh>(meshes);
+        this->triangles = parseObjects<scene::Triangle>(triangles);
+        this->spheres = parseObjects<scene::Sphere>(spheres);
+        this->planes = parseObjects<scene::Plane>(planes);
+
+        verbose("[+] Meshes Parsed: " + std::to_string(this->meshes.size()));
+        verbose("[+] Triangles Parsed: " + std::to_string(this->triangles.size()));
+        verbose("[+] Spheres Parsed: " + std::to_string(this->spheres.size()));
+        verbose("[+] Planes Parsed: " + std::to_string(this->planes.size()));
+    }
 
     verbose("================================================");
     verbose("Scene File Parsed Successfully");
@@ -230,3 +273,130 @@ scene::Material scene::parseMaterial(const json& materialData) {
     newMaterial.phongExponent = parseSingleValue<float>(materialData["PhongExponent"]);
     return newMaterial;
 }
+
+std::vector<scene::VectorFloatTriplet> scene::parseVertex(const json& vertexData) {
+    std::stringstream stream(vertexData.get<std::string>());
+    std::vector<scene::VectorFloatTriplet> vertices;
+    scene::VectorFloatTriplet vertex;
+    while (stream >> vertex.x >> vertex.y >> vertex.z) {
+        vertices.push_back(vertex);
+    }
+    stream.clear();
+    return vertices;   
+}
+
+std::vector<int> scene::parseFaces(const json& facesData) {
+    auto facesDataArray = facesData["_data"]; // "122 163 1640 623 ..."
+    std::stringstream stream(facesDataArray.get<std::string>());
+    std::vector<int> faces;
+    int face;
+    while (stream >> face) {
+        faces.push_back(face);
+    }
+    stream.clear();
+    return faces;
+}
+
+template<typename T> 
+std::vector<T> scene::Scene::parseObjects(const json& objectsData) {
+    std::vector<T> objects;
+    if (objectsData.is_array()) {
+        for (auto objectData : objectsData) {
+            T newObject;
+            newObject._id = parseSingleValue<unsigned int>(objectData["_id"]);
+            unsigned int materialId = parseSingleValue<unsigned int>(objectData["Material"]);
+            newObject.material = getMaterialById(materialId);
+            parseSpecificAttributes<T>(newObject, objectData);
+            objects.push_back(newObject);
+        }
+    } else if (!objectsData.is_null()) {
+        T newObject;
+        newObject._id = parseSingleValue<unsigned int>(objectsData["_id"]);
+        unsigned int materialId = parseSingleValue<unsigned int>(objectsData["Material"]);
+        newObject.material = getMaterialById(materialId);
+        parseSpecificAttributes<T>(newObject, objectsData);
+        objects.push_back(newObject);
+    }
+    return objects;
+}
+
+// Specialized parsing for each object type
+template<>
+void scene::Scene::parseSpecificAttributes<scene::Mesh>(scene::Mesh& object, const json& objectData) {
+    if (objectData.contains("Faces")) {
+        object.faces = parseFaces(objectData["Faces"]);
+    }
+}
+
+template<>
+void scene::Scene::parseSpecificAttributes<scene::Triangle>(scene::Triangle& object, const json& objectData) {
+    if (objectData.contains("Indices")) {
+        object.indices = parseTriplet<VectorFloatTriplet>(objectData["Indices"]);
+    }
+}
+
+template<>
+void scene::Scene::parseSpecificAttributes<scene::Sphere>(scene::Sphere& object, const json& objectData) {
+    if (objectData.contains("Center")) {
+        object.center = parseSingleValue<unsigned int>(objectData["Center"]);
+    }
+    if (objectData.contains("Radius")) {
+        object.radius = parseSingleValue<float>(objectData["Radius"]);
+    }
+}
+
+template<>
+void scene::Scene::parseSpecificAttributes<scene::Plane>(scene::Plane& object, const json& objectData) {
+    if (objectData.contains("Point")) {
+        object.point = parseSingleValue<unsigned int>(objectData["Point"]);
+    }
+    if (objectData.contains("Normal")) {
+        object.normal = parseTriplet<VectorFloatTriplet>(objectData["Normal"]);
+    }
+}
+
+scene::Material* scene::Scene::getMaterialById(unsigned int id) {
+    auto it = materialIdToIndex.find(id);
+    if (it != materialIdToIndex.end()) {
+        return &materials[it->second];
+    }
+    return nullptr;
+}
+
+
+void scene::Scene::getSummary() {
+    std::cout << "Scene:" << std::endl;
+    std::cout << "BackgroundColor: " << this->backgroundColor.x << " " << this->backgroundColor.y << " " << this->backgroundColor.z << std::endl;
+    std::cout << "ShadowRayEpsilon: " << this->shadowRayEpsilon << std::endl;
+    std::cout << "IntersectionTestEpsilon: " << this->intersectionTestEpsilon << std::endl;
+    std::cout << "Cameras: " << this->cameras.size() << std::endl;
+    for (auto camera : this->cameras) {
+        std::cout << "\t Camera: " << camera._id << "| Position: " << camera.position.x << " " << camera.position.y << " " << camera.position.z << "| Gaze: " << camera.gaze.x << " " << camera.gaze.y << " " << camera.gaze.z << "| Up: " << camera.up.x << " " << camera.up.y << " " << camera.up.z << "| NearPlane: " << camera.nearPlane.x << " " << camera.nearPlane.y << " " << camera.nearPlane.z << " " << camera.nearPlane.w << "| NearDistance: " << camera.nearDistance << "| ImageResolution: " << camera.imageResolution.x << " " << camera.imageResolution.y << "| ImageName: " << camera.imageName << std::endl;
+    }
+    std::cout << "Lights: " << this->pointLights.size() << "| lights: " << std::endl;
+    for (auto light : this->pointLights) {
+        std::cout << "\t Light: " << light._id << "| Position: " << light.position.x << " " << light.position.y << " " << light.position.z << "| Intensity: " << light.intensity.x << " " << light.intensity.y << " " << light.intensity.z << std::endl;
+    }
+    std::cout << "Materials: " << this->materials.size() << "| materials: " << std::endl;
+    for (auto material : this->materials) {
+        std::cout << "\t Material: " << material._id << "| AmbientReflectance: " << material.ambientReflectance.x << " " << material.ambientReflectance.y << " " << material.ambientReflectance.z << "| DiffuseReflectance: " << material.diffuseReflectance.x << " " << material.diffuseReflectance.y << " " << material.diffuseReflectance.z << "| SpecularReflectance: " << material.specularReflectance.x << " " << material.specularReflectance.y << " " << material.specularReflectance.z << "| PhongExponent: " << material.phongExponent << std::endl;
+    }
+    std::cout << "VertexData: " << this->vertices.size() << std::endl;
+    std::cout << "Meshes: " << this->meshes.size() << std::endl;
+    for (auto mesh : this->meshes) {
+        std::cout << "\t Mesh: " << mesh._id << "| Faces: " << mesh.faces.size() << std::endl;
+    }
+    std::cout << "Triangles: " << this->triangles.size() << std::endl;
+    for (auto triangle : this->triangles) {
+        std::cout << "\t Triangle: " << triangle._id << "| Indices: " << triangle.indices.x << " " << triangle.indices.y << " " << triangle.indices.z << std::endl;
+    }
+    std::cout << "Spheres: " << this->spheres.size() << std::endl;
+    for (auto sphere : this->spheres) {
+        std::cout << "\t Sphere: " << sphere._id << "| Center: " << sphere.center << " " << sphere.radius << std::endl;
+    }
+    std::cout << "Planes: " << this->planes.size() << std::endl;
+    for (auto plane : this->planes) {
+        std::cout << "\t Plane: " << plane._id << "| Point: " << plane.point << " " << plane.normal.x << " " << plane.normal.y << " " << plane.normal.z << std::endl;
+    }
+}
+
