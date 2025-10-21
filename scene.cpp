@@ -285,12 +285,12 @@ std::vector<scene::VectorFloatTriplet> scene::parseVertex(const json& vertexData
     return vertices;   
 }
 
-std::vector<int> scene::parseFaces(const json& facesData) {
+std::vector<scene::VectorIntTriplet> scene::parseFaces(const json& facesData) {
     auto facesDataArray = facesData["_data"]; // "122 163 1640 623 ..."
     std::stringstream stream(facesDataArray.get<std::string>());
-    std::vector<int> faces;
-    int face;
-    while (stream >> face) {
+    std::vector<scene::VectorIntTriplet> faces;
+    scene::VectorIntTriplet face;
+    while (stream >> face.x >> face.y >> face.z) {
         faces.push_back(face);
     }
     stream.clear();

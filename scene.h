@@ -74,7 +74,7 @@ namespace scene {
     };
 
     struct Mesh : public Object {
-        std::vector<int> faces;
+        std::vector<VectorIntTriplet> faces;
     };
 
     struct Triangle : public Object {
@@ -123,8 +123,14 @@ namespace scene {
     PointLight parsePointLight(const json& pointLightData);
     Material parseMaterial(const json& materialData);
     std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
-    std::vector<int> parseFaces(const json& facesData);
+    std::vector<VectorIntTriplet> parseFaces(const json& facesData);
     Object parseObject(const json& objectData);
+
+    struct Ray {
+        VectorFloatTriplet origin;
+        VectorFloatTriplet direction;
+        int depth;
+    };
 }
 
 #endif
