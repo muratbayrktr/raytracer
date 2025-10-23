@@ -131,6 +131,14 @@ namespace scene {
         VectorFloatTriplet direction;
         int depth;
     };
+
+    struct Intersection {
+        bool hit;
+        float distance;
+        VectorFloatTriplet point;
+        VectorFloatTriplet normal;
+        Material* material;
+    };
 }
 
 #endif

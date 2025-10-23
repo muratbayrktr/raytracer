@@ -35,7 +35,9 @@ int main(int argc, char* argv[])
                     Somewhere around here I gotta apply shading
                     4. If it doesn't intersect, return the background color
                 */
-                VectorFloatTriplet pixelColor = {0, 0, 0};
+                Ray ray = castRay(camera, x, y, width, height);
+                Intersection intersection = intersect(scene, ray, meshNormals, triangleNormals);
+                VectorFloatTriplet pixelColor = computePixelColor(scene, ray, intersection);
                 image[y * width + x * 3] = pixelColor.x;
                 image[y * width + x * 3 + 1] = pixelColor.y;
                 image[y * width + x * 3 + 2] = pixelColor.z;

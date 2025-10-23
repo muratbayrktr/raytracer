@@ -17,6 +17,13 @@ void precomputeTriangleNormals(const vector<Triangle>& triangles, vector<VectorF
 void writePPM(const string& filename, const vector<unsigned char>& image, int width, int height);
 
 
+/* Ray Functions */
+Ray castRay(const Camera& camera, int x, int y, int width, int height);
+
+Intersection intersect(const Scene& scene, const Ray& ray);
+
+VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection);
+
 /* Operator Overloads */
 /* VectorFloatTriplet */
 VectorFloatTriplet crossProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
@@ -29,6 +36,9 @@ VectorFloatTriplet operator+=(const VectorFloatTriplet& a, const VectorFloatTrip
 VectorFloatTriplet operator-=(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
 VectorFloatTriplet operator*=(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
 VectorFloatTriplet operator/=(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
+VectorFloatTriplet operator-(const VectorFloatTriplet& a);
+VectorFloatTriplet operator*(const VectorFloatTriplet& a, const float& b);
+VectorFloatTriplet operator*(const float& a, const VectorFloatTriplet& b);
 
 /* VectorIntTriplet */
 VectorIntTriplet crossProduct(const VectorIntTriplet& a, const VectorIntTriplet& b);

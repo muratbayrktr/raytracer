@@ -1,4 +1,5 @@
 #include <math.h>
+#include <iostream>
 #include <fstream>
 #include <stdexcept>
 #include "scene.h"
@@ -60,6 +61,40 @@ void writePPM(const string& filename, const vector<unsigned char>& image, int wi
     fclose(outfile);
 }
 
+Ray castRay(const Camera& camera, int x, int y, int width, int height) {
+    VectorFloatTriplet w = -normalize(camera.gaze);
+    VectorFloatTriplet v = normalize(camera.up);
+    VectorFloatTriplet u = crossProduct(v, w);
+    float l = camera.nearPlane.x;
+    float r = camera.nearPlane.y;
+    float b = camera.nearPlane.z;
+    float t = camera.nearPlane.w;
+    float s_u = (x+0.5)*(r - l) / width;
+    float s_v = (y+0.5)*(t - b) / height;
+    VectorFloatTriplet e = camera.position;
+    VectorFloatTriplet m = e - w * camera.nearDistance; // e - w * d
+    VectorFloatTriplet q = m + l*u + t*v; // top left corner
+    VectorFloatTriplet s = q + u*s_u - v*s_v; // corresponding point on the image plane
+    /* 
+        r(t) = e + t * (s - e) 
+        ray_direction = s - e
+        origin = e
+    */
+    VectorFloatTriplet ray_direction = s - e;
+    VectorFloatTriplet origin = e;
+    Ray ray = Ray{origin, normalize(ray_direction), 0};
+    return ray;
+}
+
+Intersection intersect(const Scene& scene, const Ray& ray, const vector<VectorFloatTriplet>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+
+
+}
+
+VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection) {
+    
+}
+
 /* Operator Overloads */
 /* VectorFloatTriplet */
 VectorFloatTriplet crossProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
@@ -103,6 +138,17 @@ VectorFloatTriplet operator/=(const VectorFloatTriplet& a, const VectorFloatTrip
     return VectorFloatTriplet{a.x / b.x, a.y / b.y, a.z / b.z}; 
 }
 
+VectorFloatTriplet operator-(const VectorFloatTriplet& a) { 
+    return VectorFloatTriplet{-a.x, -a.y, -a.z}; 
+}
+
+VectorFloatTriplet operator*(const VectorFloatTriplet& a, const float& b) { 
+    return VectorFloatTriplet{a.x * b, a.y * b, a.z * b}; 
+}
+
+VectorFloatTriplet operator*(const float& a, const VectorFloatTriplet& b) { 
+    return VectorFloatTriplet{a * b.x, a * b.y, a * b.z}; 
+}
 /* VectorIntTriplet */
 VectorIntTriplet crossProduct(const VectorIntTriplet& a, const VectorIntTriplet& b) { 
     return VectorIntTriplet{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; 
