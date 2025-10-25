@@ -78,16 +78,16 @@ namespace scene {
     };
 
     struct Triangle : public Object {
-        VectorFloatTriplet indices;
+        VectorIntTriplet indices;
     };
 
     struct Sphere : public Object {
-        float center;
+        unsigned int center;
         float radius;
     };
 
     struct Plane : public Object {
-        float point;
+        unsigned int point;
         VectorFloatTriplet normal;
     };
 

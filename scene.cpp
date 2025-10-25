@@ -291,6 +291,10 @@ std::vector<scene::VectorIntTriplet> scene::parseFaces(const json& facesData) {
     std::vector<scene::VectorIntTriplet> faces;
     scene::VectorIntTriplet face;
     while (stream >> face.x >> face.y >> face.z) {
+        // Convert from 1-based to 0-based indexing
+        face.x -= 1;
+        face.y -= 1;
+        face.z -= 1;
         faces.push_back(face);
     }
     stream.clear();
@@ -331,7 +335,11 @@ void scene::Scene::parseSpecificAttributes<scene::Mesh>(scene::Mesh& object, con
 template<>
 void scene::Scene::parseSpecificAttributes<scene::Triangle>(scene::Triangle& object, const json& objectData) {
     if (objectData.contains("Indices")) {
-        object.indices = parseTriplet<VectorFloatTriplet>(objectData["Indices"]);
+        object.indices = parseTriplet<VectorIntTriplet>(objectData["Indices"]);
+        // Convert from 1-based to 0-based indexing
+        object.indices.x -= 1;
+        object.indices.y -= 1;
+        object.indices.z -= 1;
     }
 }
 
@@ -339,6 +347,8 @@ template<>
 void scene::Scene::parseSpecificAttributes<scene::Sphere>(scene::Sphere& object, const json& objectData) {
     if (objectData.contains("Center")) {
         object.center = parseSingleValue<unsigned int>(objectData["Center"]);
+        // Convert from 1-based to 0-based indexing
+        object.center -= 1;
     }
     if (objectData.contains("Radius")) {
         object.radius = parseSingleValue<float>(objectData["Radius"]);
@@ -349,6 +359,8 @@ template<>
 void scene::Scene::parseSpecificAttributes<scene::Plane>(scene::Plane& object, const json& objectData) {
     if (objectData.contains("Point")) {
         object.point = parseSingleValue<unsigned int>(objectData["Point"]);
+        // Convert from 1-based to 0-based indexing
+        object.point -= 1;
     }
     if (objectData.contains("Normal")) {
         object.normal = parseTriplet<VectorFloatTriplet>(objectData["Normal"]);
@@ -396,7 +408,7 @@ void scene::Scene::getSummary() {
     }
     std::cout << "Planes: " << this->planes.size() << std::endl;
     for (auto plane : this->planes) {
-        std::cout << "\t Plane: " << plane._id << "| Point: " << plane.point << " " << plane.normal.x << " " << plane.normal.y << " " << plane.normal.z << std::endl;
+        std::cout << "\t Plane: " << plane._id << "| Point Index: " << plane.point << "| Normal: " << plane.normal.x << " " << plane.normal.y << " " << plane.normal.z << std::endl;
     }
 }
 
