@@ -11,21 +11,22 @@ using namespace scene;
 
 void precomputeMeshNormals(
     const vector<Mesh>& meshes, 
-    vector<VectorFloatTriplet>& meshNormals, 
+    vector<vector<VectorFloatTriplet>>& meshNormals, 
     const vector<VectorFloatTriplet>& vertices
 ) {
     meshNormals.reserve(meshes.size());
     for (const Mesh& mesh : meshes) {
-        VectorFloatTriplet normal = {0, 0, 0};
+        meshNormals.push_back(vector<VectorFloatTriplet>());
         for (const VectorIntTriplet& face : mesh.faces) {
             VectorFloatTriplet v0 = vertices[face.x];
             VectorFloatTriplet v1 = vertices[face.y];
             VectorFloatTriplet v2 = vertices[face.z];
-            VectorFloatTriplet normal = crossProduct(v1 - v0, v2 - v0);
+            VectorFloatTriplet v1_v0 = {v1.x - v0.x, v1.y - v0.y, v1.z - v0.z};
+            VectorFloatTriplet v2_v0 = {v2.x - v0.x, v2.y - v0.y, v2.z - v0.z};
+            VectorFloatTriplet normal = crossProduct(v1_v0, v2_v0);
             normal = normalize(normal);
-            normal += normal;
+            meshNormals.back().push_back(normal);
         }
-        meshNormals.push_back(normal);
     }
     return;
 }
@@ -49,15 +50,21 @@ void precomputeTriangleNormals(
     return;
 }
 
-void writePPM(const string& filename, const vector<unsigned char>& image, int width, int height) {
+void writePPM(const string& filename, unsigned char* image, int width, int height) {
     FILE *outfile;
     if ((outfile = fopen(filename.c_str(), "w")) == NULL) {
-        throw runtime_error("Error: The ppm file cannot be opened for writing.");
+        throw runtime_error("Error: The ppm file cannot be opened for writing: " + filename);
     }
     fprintf(outfile, "P3\n%d %d\n255\n", width, height);
-    for (int i = 0; i < width * height * 3; i++) {
-        fprintf(outfile, "%d ", image[i]);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            for (int c = 0; c < 3; c++) {
+                fprintf(outfile, "%u ", image[(y * width + x) * 3 + c]);
+            }
+        }
+        fprintf(outfile, "\n");
     }
+    fprintf(outfile, "\n");
     fclose(outfile);
 }
 
@@ -72,10 +79,11 @@ Ray castRay(const Camera& camera, int x, int y, int width, int height) {
     float s_u = (x+0.5)*(r - l) / width;
     float s_v = (y+0.5)*(t - b) / height;
     VectorFloatTriplet e = camera.position;
-    VectorFloatTriplet m = e - w * camera.nearDistance; // e - w * d
-    VectorFloatTriplet q = m + l*u + t*v; // top left corner
-    VectorFloatTriplet s = q + u*s_u - v*s_v; // corresponding point on the image plane
+    VectorFloatTriplet m = e - w * camera.nearDistance;
+    VectorFloatTriplet q = m + l*u + t*v;
+    VectorFloatTriplet s = q + u*s_u - v*s_v;
     /* 
+        From lecture slides:
         r(t) = e + t * (s - e) 
         ray_direction = s - e
         origin = e
@@ -86,13 +94,67 @@ Ray castRay(const Camera& camera, int x, int y, int width, int height) {
     return ray;
 }
 
-Intersection intersect(const Scene& scene, const Ray& ray, const vector<VectorFloatTriplet>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
-
-
+bool rayHitsPlane(const Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection) {
+        /*
+            From lecture slides:
+            Formula is simple (origin + t * direction - a) * normal = 0
+            Solving for t gives us t = (a - origin) * normal / (direction * normal)
+        */
+       VectorFloatTriplet n = plane.normal;
+       VectorFloatTriplet a = vertices[plane.point];
+       VectorFloatTriplet d = ray.direction;
+       VectorFloatTriplet o = ray.origin;
+       float denom = dotProduct(d, n);
+       if(fabs(denom) < 1e-9) return false;
+       float t = dotProduct(a - o, n) / denom;
+       if(t > 0 && t < t_min) {
+        t_min = t;
+        intersection = Intersection{true, t, o + d * t, n, plane.material};
+        return true;
+       }
+       return false;
 }
 
-VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection) {
-    
+bool rayHitsSphere(const Ray& ray, const Sphere& sphere, float& t_min, Intersection& intersection) {
+    return false;
+}
+
+bool rayHitsTriangle(const Ray& ray, const Triangle& triangle, const VectorFloatTriplet& normal, float& t_min, Intersection& intersection) {
+    return false;
+}
+
+bool rayHitsMesh(const Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& normals, float& t_min, Intersection& intersection) {
+    return false;
+}
+
+Intersection intersect(const Scene& scene, const Ray& ray, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+    float t_min = numeric_limits<float>::max();
+    Intersection intersection = Intersection{false, 0, VectorFloatTriplet{0, 0, 0}, VectorFloatTriplet{0, 0, 0}, nullptr};
+    bool hit = false;
+    for(int i = 0; i < scene.planes.size(); i++) {
+        hit = rayHitsPlane(ray, scene.planes[i], scene.vertices, t_min, intersection) || hit;
+    }
+    // for(int i = 0; i < scene.spheres.size(); i++) {
+    //     hit = rayHitsSphere(ray, scene.spheres[i], t_min, intersection) || hit;
+    // }
+    // for(int i = 0; i < scene.triangles.size(); i++) {
+    //     hit = rayHitsTriangle(ray, scene.triangles[i], triangleNormals[i], t_min, intersection) || hit;
+    // }
+    // for(int i = 0; i < scene.meshes.size(); i++) {
+    //     hit = rayHitsMesh(ray, scene.meshes[i], meshNormals[i], t_min, intersection) || hit;
+    // }
+    return intersection;
+}
+
+VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Intersection& intersection, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+    return VectorFloatTriplet{100, 100, 100};
+}
+
+VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+    if(intersection.hit) {
+        return computeShading(scene, ray, intersection, meshNormals, triangleNormals);
+    }
+    return scene.backgroundColor;
 }
 
 /* Operator Overloads */
@@ -122,20 +184,24 @@ VectorFloatTriplet operator*(const VectorFloatTriplet& a, const VectorFloatTripl
     return VectorFloatTriplet{a.x * b.x, a.y * b.y, a.z * b.z}; 
 }
 
-VectorFloatTriplet operator+=(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
-    return VectorFloatTriplet{a.x + b.x, a.y + b.y, a.z + b.z}; 
+VectorFloatTriplet& operator+=(VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
+    a.x += b.x; a.y += b.y; a.z += b.z;
+    return a;
 }
 
-VectorFloatTriplet operator-=(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
-    return VectorFloatTriplet{a.x - b.x, a.y - b.y, a.z - b.z}; 
+VectorFloatTriplet& operator-=(VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
+    a.x -= b.x; a.y -= b.y; a.z -= b.z;
+    return a;
 }
 
-VectorFloatTriplet operator*=(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
-    return VectorFloatTriplet{a.x * b.x, a.y * b.y, a.z * b.z}; 
+VectorFloatTriplet& operator*=(VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
+    a.x *= b.x; a.y *= b.y; a.z *= b.z;
+    return a;
 }
 
-VectorFloatTriplet operator/=(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
-    return VectorFloatTriplet{a.x / b.x, a.y / b.y, a.z / b.z}; 
+VectorFloatTriplet& operator/=(VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
+    a.x /= b.x; a.y /= b.y; a.z /= b.z;
+    return a;
 }
 
 VectorFloatTriplet operator-(const VectorFloatTriplet& a) { 
@@ -175,18 +241,22 @@ VectorIntTriplet operator*(const VectorIntTriplet& a, const VectorIntTriplet& b)
     return VectorIntTriplet{a.x * b.x, a.y * b.y, a.z * b.z}; 
 }
 
-VectorIntTriplet operator+=(const VectorIntTriplet& a, const VectorIntTriplet& b) { 
-    return VectorIntTriplet{a.x + b.x, a.y + b.y, a.z + b.z}; 
+VectorIntTriplet& operator+=(VectorIntTriplet& a, const VectorIntTriplet& b) { 
+    a.x += b.x; a.y += b.y; a.z += b.z;
+    return a;
 }
 
-VectorIntTriplet operator-=(const VectorIntTriplet& a, const VectorIntTriplet& b) { 
-    return VectorIntTriplet{a.x - b.x, a.y - b.y, a.z - b.z}; 
+VectorIntTriplet& operator-=(VectorIntTriplet& a, const VectorIntTriplet& b) { 
+    a.x -= b.x; a.y -= b.y; a.z -= b.z;
+    return a;
 }
 
-VectorIntTriplet operator*=(const VectorIntTriplet& a, const VectorIntTriplet& b) { 
-    return VectorIntTriplet{a.x * b.x, a.y * b.y, a.z * b.z}; 
+VectorIntTriplet& operator*=(VectorIntTriplet& a, const VectorIntTriplet& b) { 
+    a.x *= b.x; a.y *= b.y; a.z *= b.z;
+    return a;
 }
 
-VectorIntTriplet operator/=(const VectorIntTriplet& a, const VectorIntTriplet& b) { 
-    return VectorIntTriplet{a.x / b.x, a.y / b.y, a.z / b.z}; 
+VectorIntTriplet& operator/=(VectorIntTriplet& a, const VectorIntTriplet& b) { 
+    a.x /= b.x; a.y /= b.y; a.z /= b.z;
+    return a;
 }
