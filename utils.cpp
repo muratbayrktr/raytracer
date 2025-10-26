@@ -8,6 +8,14 @@
 using namespace std;
 using namespace scene;
 
+void clamp(VectorFloatTriplet& color, int min, int max) {
+    if (color.x < min) color.x = min;
+    if (color.x > max) color.x = max;
+    if (color.y < min) color.y = min;
+    if (color.y > max) color.y = max;
+    if (color.z < min) color.z = min;
+    if (color.z > max) color.z = max;
+}
 
 void precomputeMeshNormals(
     const vector<Mesh>& meshes, 

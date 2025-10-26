@@ -33,6 +33,7 @@ int main(int argc, char* argv[])
                 Intersection intersection = intersect(scene, ray, meshNormals, triangleNormals);
                 VectorFloatTriplet pixelColor = computePixelColor(scene, ray, intersection, meshNormals, triangleNormals);
                 
+                clamp(pixelColor, 0, 255);
                 image[(y * width + x) * 3] = (unsigned char) round(pixelColor.x);
                 image[(y * width + x) * 3 + 1] = (unsigned char) round(pixelColor.y);
                 image[(y * width + x) * 3 + 2] = (unsigned char) round(pixelColor.z);

@@ -11,7 +11,7 @@ using namespace scene;
 void precomputeMeshNormals(const vector<Mesh>& meshes, vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& vertices);
 void precomputeTriangleNormals(const vector<Triangle>& triangles, vector<VectorFloatTriplet>& triangleNormals, const vector<VectorFloatTriplet>& vertices);
 
-
+void clamp(VectorFloatTriplet& color, int min, int max);
 
 /* Write Functions */
 void writePPM(const string& filename, unsigned char* image, int width, int height);
