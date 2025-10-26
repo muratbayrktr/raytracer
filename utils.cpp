@@ -111,7 +111,7 @@ void precomputeCameraMeshDeterminant(const Scene& scene, vector<vector<vector<fl
 }
 
 void writePPM(const string& filename, unsigned char* image, int width, int height) {
-    // Remove following lines to write png file, I did this for debugging
+    // @TODO: Remove following lines to write png file, I did this for debugging
     size_t dotPos = filename.find_last_of('.');
     string ppmFilename;
     if (dotPos != string::npos) {
@@ -210,12 +210,7 @@ bool rayHitsSphere(const Ray& ray, const Sphere& sphere, const vector<VectorFloa
 
 bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorFloatTriplet& triangleNormal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, float intersectionTestEpsilon, float determinantT, Material* material) {
     /*
-        The idea is to go from the area of the triangle to the barycentric coordinates of the intersection point.
-        This will allow me to early quit with some checks as well.
 
-        We can sit down and write cramer's rule function or determinant function to solve the equation.
-        HOWEVER, I want speed and I won't be calculating the bigger determinants or I won't need cramer for other things.
-        Instead, I will just plug in the formula for alpha, beta and gamma in the derived form.
     */
     VectorFloatTriplet a = vertices[face.x];
     VectorFloatTriplet b = vertices[face.y];
@@ -225,49 +220,9 @@ bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorF
     float ax=a.x, ay=a.y, az=a.z, bx=b.x, by=b.y, bz=b.z, cx=c.x, cy=c.y, cz=c.z;
     float ox=ray.origin.x, oy=ray.origin.y, oz=ray.origin.z, dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
     /*
-
-    Taken from lecture slides:
-    beta = | ax-ox ax-cx dx |
-           | ay-oy ay-cy dy |
-           | az-oz az-cz dz |
-           -------------------
-                  |area|
-
-    gamma = | ax-bx ax-ox dx |
-           | ay-by ay-oy dy |
-           | az-bz az-oz dz |
-           -------------------
-                  |area|
-
-    alpha = 1 - beta - gamma
-
-    determinantBeta = (ax - ox) * [(ay-cy)*dz - (az-cz)*dy] 
-                    + (ay - oy) * [(az-cz)*dx - (ax-cx)*dz]
-                    + (az - oz) * [(ax-cx)*dy - (ay-cy)*dx]
-    
-
-    determinantGamma = (ax - bx) * [(ay-oy)*dz - (az-oz)*dy] 
-                    + (ay - by) * [(az-oz)*dx - (ax-ox)*dz]
-                    + (az - bz) * [(ax-ox)*dy - (ay-oy)*dx]
-                    
-    beta = determinantBeta / |area|
-    gamma = determinantGamma / |area|
-    alpha = 1 - beta - gamma
-
-    For the t calculation we have (replacing first column with o-a):
-
-    determinantT = | ax-bx ax-cx ax-ox |
-                   | ay-by ay-cy ay-oy |
-                   | az-bz az-cz az-oz |
-
-    determinantT = (ax-bx) * [(ay-cy)*(az-oz) - (az-cz)*(ay-oy)]
-                 + (ay-by) * [(az-cz)*(ax-ox) - (ax-cx)*(az-oz)]
-                 + (az-bz) * [(ax-cx)*(ay-oy) - (ay-cy)*(ax-ox)]
-
-    t = determinantT / area
-
     For the sake of simplicity, I am naming some parts of the formula i.e. e1x = bx - ax, e1y = by - ay, e1z = bz - az, etc.
-    This is done to avoid having to write the same formula multiple times.
+
+    @TODO: I need to discard the precomputed determinant whenever the ray is reflected or refracted. ORIGIN CHANGES.
     */
     const float e1x = bx - ax, e1y = by - ay, e1z = bz - az;
     const float e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
@@ -303,7 +258,13 @@ bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorF
     if (gamma < intersectionTestEpsilon || gamma > 1.0f) return false;
     if (beta + gamma > 1.0f) return false; 
 
-
+    /*
+    @TODO: I need to discard the precomputed determinant whenever the ray is reflected or refracted. ORIGIN CHANGES.
+    determinantT =
+          e1x * (e2y * rz - e2z * ry)
+        - e1y * (e2x * rz - e2z * rx)
+        + e1z * (e2x * ry - e2y * rx);
+    */
     float t = determinantT * invDet;
 
      // Early quit

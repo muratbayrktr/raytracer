@@ -103,5 +103,73 @@ TODO:
 
 The spheres with plane scene is rendering correctly now with proper lighting and specular highlights. Pretty happy with it now. 
 
+## 2025-10-26 Evening & Night
 
+I am more of a zone-out person. So although I have made little progress last week, the biggest progress was today which I sat more than 8-9 hours straight. For the last couple of hours I've been working on implementing the ray-triangle intersection.
 
+There were 2 main methods which I could have used: 
+1- Lengthy method
+2- Barycentric coordinates method
+
+I thought using barycentric coordinates will allow me to early quit with some checks. Moreover, while calculating the determinant for `t` I noticed we were only using the origin and the triangle vertices. **Which means** I don't need to know the ray direction so origin will be constant and I will be able to calculate the determinant pre-tracing.
+
+But now that I am writing what I have done, I noticed I haven't implemented the reflection and refraction yet. So while reflecting the ray I will be sending will be a new ray with a new origin and direction meaning the moment I need to calculate the reflected ray triangle intersection if I use the precomputed determinant I will be screwed. I am glad I am writing this down right now otherwise I wouldn't have noticed this. 
+
+Back to the calculations below is a summary tbh, I wrote these down on the comments of the code, so since I am moving them here I will just delete from there.
+```
+    The idea is to go from the area of the triangle to the barycentric coordinates of the intersection point.
+    This will allow me to early quit with some checks as well.
+
+    We can sit down and write cramer's rule function or determinant function to solve the equation.
+    HOWEVER, I want speed and I won't be calculating the bigger determinants or I won't need cramer for other things.
+    Instead, I will just plug in the formula for alpha, beta and gamma in the derived form.
+
+    Taken from lecture slides:
+    beta = | ax-ox ax-cx dx |
+           | ay-oy ay-cy dy |
+           | az-oz az-cz dz |
+           -------------------
+                  |area|
+
+    gamma = | ax-bx ax-ox dx |
+           | ay-by ay-oy dy |
+           | az-bz az-oz dz |
+           -------------------
+                  |area|
+
+    alpha = 1 - beta - gamma
+
+    determinantBeta = (ax - ox) * [(ay-cy)*dz - (az-cz)*dy] 
+                    + (ay - oy) * [(az-cz)*dx - (ax-cx)*dz]
+                    + (az - oz) * [(ax-cx)*dy - (ay-cy)*dx]
+    
+
+    determinantGamma = (ax - bx) * [(ay-oy)*dz - (az-oz)*dy] 
+                    + (ay - by) * [(az-oz)*dx - (ax-ox)*dz]
+                    + (az - bz) * [(ax-ox)*dy - (ay-oy)*dx]
+                    
+    beta = determinantBeta / |area|
+    gamma = determinantGamma / |area|
+    alpha = 1 - beta - gamma
+
+    For the t calculation we have (replacing first column with o-a):
+
+    determinantT = | ax-bx ax-cx ax-ox |
+                   | ay-by ay-cy ay-oy |
+                   | az-bz az-cz az-oz |
+
+    determinantT = (ax-bx) * [(ay-cy)*(az-oz) - (az-cz)*(ay-oy)]
+                 + (ay-by) * [(az-cz)*(ax-ox) - (ax-cx)*(az-oz)]
+                 + (az-bz) * [(ax-cx)*(ay-oy) - (ay-cy)*(ax-ox)]
+
+    t = determinantT / |area|
+```
+
+Now that `utils.cpp` is bloated with precomputations, main logic and operator overloads I will just separate them into smaller files.
+
+```
+overloads.h - for operator overloads
+precomputations.h - for precomputations
+utils.h - for the main logic
+utils.cpp - for the implementation of the main logic
+```
