@@ -173,3 +173,5 @@ precomputations.h - for precomputations
 utils.h - for the main logic
 utils.cpp - for the implementation of the main logic
 ```
+
+The simple.json scene file is almost rendering correctly now. I’ll take a break and come back later tonight to figure out why it’s only nearly correct and then continue with the other scenes. It seems that some parsing issues are still present — probably because I skipped some of the additional guidelines at the beginning to get my raytracer running faster. I guess I’m paying for that shortcut now.

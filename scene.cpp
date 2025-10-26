@@ -2,6 +2,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cstdio>
+#include <stdexcept>
 
 #include "scene.h"
 #include "json.hpp"
@@ -412,3 +414,26 @@ void scene::Scene::getSummary() {
     }
 }
 
+void scene::Scene::writePPM(const std::string& filename, unsigned char* image, int width, int height) {
+    // @TODO: Remove following lines to write png file, I did this for debugging
+    size_t dotPos = filename.find_last_of('.');
+    std::string ppmFilename;
+    if (dotPos != std::string::npos) {
+        ppmFilename = filename.substr(0, dotPos) + ".ppm";
+    }
+    FILE *outfile;
+    if ((outfile = fopen(ppmFilename.c_str(), "w")) == NULL) {
+        throw std::runtime_error("Error: The ppm file cannot be opened for writing: " + filename);
+    }
+    fprintf(outfile, "P3\n%d %d\n255\n", width, height);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            for (int c = 0; c < 3; c++) {
+                fprintf(outfile, "%u ", image[(y * width + x) * 3 + c]);
+            }
+        }
+        fprintf(outfile, "\n");
+    }
+    fprintf(outfile, "\n");
+    fclose(outfile);
+}

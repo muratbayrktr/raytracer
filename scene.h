@@ -127,6 +127,8 @@ namespace scene {
         void parseSpecificAttributes(T& object, const json& objectData);
 
         void getSummary();
+
+        void writePPM(const std::string& filename, unsigned char* image, int width, int height);
     };
 
     Camera parseCamera(const json& cameraData);

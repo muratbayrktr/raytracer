@@ -3,6 +3,7 @@
 #include "scene.h"
 #include "utils.h"
 #include <cmath>
+#include "precompute.h"
 #define OUTPUT_PATH "../my_outputs/"
 using namespace std;
 using namespace scene;
@@ -52,7 +53,7 @@ int main(int argc, char* argv[])
             }
         }
         string outputName = camera.imageName;
-        writePPM((OUTPUT_PATH + outputName).c_str(), image, width, height);
+        scene.writePPM((OUTPUT_PATH + outputName).c_str(), image, width, height);
         delete[] image;
     }
     return 0;
