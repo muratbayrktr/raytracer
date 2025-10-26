@@ -129,11 +129,33 @@ bool rayHitsPlane(const Ray& ray, const Plane& plane, const vector<VectorFloatTr
        return false;
 }
 
-bool rayHitsSphere(const Ray& ray, const Sphere& sphere, float& t_min, Intersection& intersection) {
+bool rayHitsSphere(const Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection) {
+    /*
+        From the lecture slides:
+        After solving for t we get the following formula:
+            t = [-d . (o - c)  +- sqrt((d . (o - c))^2 - (d . d) * ((o - c)^2 - r^2))] / (d . d)
+    */
+    VectorFloatTriplet c = vertices[sphere.center];
+    VectorFloatTriplet o = ray.origin;
+    VectorFloatTriplet d = ray.direction;
+    float r = sphere.radius;
+    float D = dotProduct(d, o - c) * dotProduct(d, o - c) 
+                - (dotProduct(d, d) * (dotProduct(o - c, o - c) - r * r));
+    if(D < 0) return false;
+    float t1 = (-dotProduct(d, o - c) + sqrt(D)) / dotProduct(d, d);
+    float t2 = (-dotProduct(d, o - c) - sqrt(D)) / dotProduct(d, d);
+    float t = min(t1, t2);
+    VectorFloatTriplet intersection_point = o + d * t;
+    VectorFloatTriplet intersection_normal = normalize(intersection_point - c);
+    if(t > 0 && t < t_min) {
+        t_min = t;
+        intersection = Intersection{true, t, intersection_point, intersection_normal, sphere.material};
+        return true;
+    }
     return false;
 }
 
-bool rayHitsTriangle(const Ray& ray, const Triangle& triangle, const VectorFloatTriplet& normal, float& t_min, Intersection& intersection) {
+bool rayHitsTriangle(const Ray& ray, const Triangle& triangle, const VectorFloatTriplet& normal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection) {
     return false;
 }
 
@@ -148,12 +170,12 @@ Intersection intersect(const Scene& scene, const Ray& ray, const vector<vector<V
     for(int i = 0; i < scene.planes.size(); i++) {
         hit = rayHitsPlane(ray, scene.planes[i], scene.vertices, t_min, intersection) || hit;
     }
-    // for(int i = 0; i < scene.spheres.size(); i++) {
-    //     hit = rayHitsSphere(ray, scene.spheres[i], t_min, intersection) || hit;
-    // }
-    // for(int i = 0; i < scene.triangles.size(); i++) {
-    //     hit = rayHitsTriangle(ray, scene.triangles[i], triangleNormals[i], t_min, intersection) || hit;
-    // }
+    for(int i = 0; i < scene.spheres.size(); i++) {
+        hit = rayHitsSphere(ray, scene.spheres[i], scene.vertices, t_min, intersection) || hit;
+    }
+    for(int i = 0; i < scene.triangles.size(); i++) {
+        hit = rayHitsTriangle(ray, scene.triangles[i], triangleNormals[i], scene.vertices, t_min, intersection) || hit;
+    }
     // for(int i = 0; i < scene.meshes.size(); i++) {
     //     hit = rayHitsMesh(ray, scene.meshes[i], meshNormals[i], t_min, intersection) || hit;
     // }
@@ -161,7 +183,37 @@ Intersection intersect(const Scene& scene, const Ray& ray, const vector<vector<V
 }
 
 VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Intersection& intersection, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
-    return VectorFloatTriplet{100, 100, 100};
+    Material* material = intersection.material;
+    VectorFloatTriplet color = VectorFloatTriplet{0, 0, 0};
+    
+    // Ambient component
+    VectorFloatTriplet ambient = material->ambientReflectance * scene.ambientLight.intensity;
+    color += ambient;
+    
+    // Iterate through all point lights
+    for (const PointLight& light : scene.pointLights) {
+        VectorFloatTriplet lightVec = light.position - intersection.point;
+        float distance = sqrt(dotProduct(lightVec, lightVec));
+        VectorFloatTriplet lightDir = normalize(lightVec);
+        VectorFloatTriplet normal = normalize(intersection.normal);
+        
+        // Distance attenuation (1/r^2)
+        float attenuation = 1.0f / (distance * distance);
+        
+        // Diffuse component
+        float diffuseFactor = max(0.0f, dotProduct(normal, lightDir));
+        VectorFloatTriplet diffuse = material->diffuseReflectance * light.intensity * diffuseFactor * attenuation;
+        
+        // Specular component (Blinn-Phong)
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+        float specularFactor = pow(max(0.0f, dotProduct(normal, halfVector)), material->phongExponent);
+        VectorFloatTriplet specular = material->specularReflectance * light.intensity * specularFactor * attenuation;
+        
+        color += diffuse + specular;
+    }
+    
+    return color;
 }
 
 VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
