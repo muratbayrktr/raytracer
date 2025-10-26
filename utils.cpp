@@ -29,8 +29,8 @@ void precomputeMeshNormals(
             VectorFloatTriplet v0 = vertices[face.x];
             VectorFloatTriplet v1 = vertices[face.y];
             VectorFloatTriplet v2 = vertices[face.z];
-            VectorFloatTriplet v1_v0 = {v1.x - v0.x, v1.y - v0.y, v1.z - v0.z};
-            VectorFloatTriplet v2_v0 = {v2.x - v0.x, v2.y - v0.y, v2.z - v0.z};
+            VectorFloatTriplet v1_v0 = v1 - v0;
+            VectorFloatTriplet v2_v0 = v2 - v0;
             VectorFloatTriplet normal = crossProduct(v1_v0, v2_v0);
             normal = normalize(normal);
             meshNormals.back().push_back(normal);
@@ -49,11 +49,63 @@ void precomputeTriangleNormals(
         VectorFloatTriplet v0 = vertices[triangle.indices.x];
         VectorFloatTriplet v1 = vertices[triangle.indices.y];
         VectorFloatTriplet v2 = vertices[triangle.indices.z];
-        VectorFloatTriplet v1_v0 = {v1.x - v0.x, v1.y - v0.y, v1.z - v0.z};
-        VectorFloatTriplet v2_v0 = {v2.x - v0.x, v2.y - v0.y, v2.z - v0.z};
+        VectorFloatTriplet v1_v0 = v1 - v0;
+        VectorFloatTriplet v2_v0 = v2 - v0;
         VectorFloatTriplet normal = crossProduct(v1_v0, v2_v0);
         normal = normalize(normal);
         triangleNormals.push_back(normal);
+    }
+    return;
+}
+
+void precomputeCameraTriangleDeterminant(const Scene& scene, vector<vector<float>>& cameraTriangleDeterminant) {
+    cameraTriangleDeterminant.reserve(scene.cameras.size());
+    for (const Camera& camera : scene.cameras) {
+        cameraTriangleDeterminant.push_back(vector<float>());
+        cameraTriangleDeterminant.back().reserve(scene.triangles.size());
+        for (const Triangle& triangle : scene.triangles) {
+            VectorFloatTriplet o = camera.position;
+            VectorFloatTriplet a = scene.vertices[triangle.indices.x];
+            VectorFloatTriplet b = scene.vertices[triangle.indices.y];
+            VectorFloatTriplet c = scene.vertices[triangle.indices.z];
+            float ax = a.x, ay = a.y, az = a.z;
+            float bx = b.x, by = b.y, bz = b.z;
+            float cx = c.x, cy = c.y, cz = c.z;
+            float ox = o.x, oy = o.y, oz = o.z;
+            const float e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+            const float e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+            const float rx  = ox - ax, ry  = oy - ay, rz  = oz - az;
+            cameraTriangleDeterminant.back().push_back(e1x * (e2y * rz - e2z * ry)
+                                                    - e1y * (e2x * rz - e2z * rx)
+                                                    + e1z * (e2x * ry - e2y * rx));
+        }
+    }
+}
+
+void precomputeCameraMeshDeterminant(const Scene& scene, vector<vector<vector<float>>>& cameraMeshDeterminant) {
+    cameraMeshDeterminant.reserve(scene.cameras.size());
+    for (const Camera& camera : scene.cameras) {
+        cameraMeshDeterminant.push_back(vector<vector<float>>());
+        cameraMeshDeterminant.back().reserve(scene.meshes.size());
+        for (const Mesh& mesh : scene.meshes) {
+            cameraMeshDeterminant.back().emplace_back(vector<float>());
+            cameraMeshDeterminant.back().back().reserve(mesh.faces.size());
+            for (const VectorIntTriplet& face : mesh.faces) {
+                VectorFloatTriplet v0 = scene.vertices[face.x];
+                VectorFloatTriplet v1 = scene.vertices[face.y];
+                VectorFloatTriplet v2 = scene.vertices[face.z];
+                float ax = v0.x, ay = v0.y, az = v0.z;
+                float bx = v1.x, by = v1.y, bz = v1.z;
+                float cx = v2.x, cy = v2.y, cz = v2.z;
+                float ox = camera.position.x, oy = camera.position.y, oz = camera.position.z;
+                const float e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+                const float e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+                const float rx  = ox - ax, ry  = oy - ay, rz  = oz - az;
+                cameraMeshDeterminant.back().back().push_back(e1x * (e2y * rz - e2z * ry)
+                                                                - e1y * (e2x * rz - e2z * rx)
+                                                                + e1z * (e2x * ry - e2y * rx));
+            }
+        }
     }
     return;
 }
@@ -155,15 +207,136 @@ bool rayHitsSphere(const Ray& ray, const Sphere& sphere, const vector<VectorFloa
     return false;
 }
 
-bool rayHitsTriangle(const Ray& ray, const Triangle& triangle, const VectorFloatTriplet& normal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection) {
+
+bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorFloatTriplet& triangleNormal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, float intersectionTestEpsilon, float determinantT, Material* material) {
+    /*
+        The idea is to go from the area of the triangle to the barycentric coordinates of the intersection point.
+        This will allow me to early quit with some checks as well.
+
+        We can sit down and write cramer's rule function or determinant function to solve the equation.
+        HOWEVER, I want speed and I won't be calculating the bigger determinants or I won't need cramer for other things.
+        Instead, I will just plug in the formula for alpha, beta and gamma in the derived form.
+    */
+    VectorFloatTriplet a = vertices[face.x];
+    VectorFloatTriplet b = vertices[face.y];
+    VectorFloatTriplet c = vertices[face.z];
+    float area = dotProduct(crossProduct(b - a, c - a), triangleNormal);
+    if (fabs(area) < 1e-8) return false; // degenerate triangle
+    float ax=a.x, ay=a.y, az=a.z, bx=b.x, by=b.y, bz=b.z, cx=c.x, cy=c.y, cz=c.z;
+    float ox=ray.origin.x, oy=ray.origin.y, oz=ray.origin.z, dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
+    /*
+
+    Taken from lecture slides:
+    beta = | ax-ox ax-cx dx |
+           | ay-oy ay-cy dy |
+           | az-oz az-cz dz |
+           -------------------
+                  |area|
+
+    gamma = | ax-bx ax-ox dx |
+           | ay-by ay-oy dy |
+           | az-bz az-oz dz |
+           -------------------
+                  |area|
+
+    alpha = 1 - beta - gamma
+
+    determinantBeta = (ax - ox) * [(ay-cy)*dz - (az-cz)*dy] 
+                    + (ay - oy) * [(az-cz)*dx - (ax-cx)*dz]
+                    + (az - oz) * [(ax-cx)*dy - (ay-cy)*dx]
+    
+
+    determinantGamma = (ax - bx) * [(ay-oy)*dz - (az-oz)*dy] 
+                    + (ay - by) * [(az-oz)*dx - (ax-ox)*dz]
+                    + (az - bz) * [(ax-ox)*dy - (ay-oy)*dx]
+                    
+    beta = determinantBeta / |area|
+    gamma = determinantGamma / |area|
+    alpha = 1 - beta - gamma
+
+    For the t calculation we have (replacing first column with o-a):
+
+    determinantT = | ax-bx ax-cx ax-ox |
+                   | ay-by ay-cy ay-oy |
+                   | az-bz az-cz az-oz |
+
+    determinantT = (ax-bx) * [(ay-cy)*(az-oz) - (az-cz)*(ay-oy)]
+                 + (ay-by) * [(az-cz)*(ax-ox) - (ax-cx)*(az-oz)]
+                 + (az-bz) * [(ax-cx)*(ay-oy) - (ay-cy)*(ax-ox)]
+
+    t = determinantT / area
+
+    For the sake of simplicity, I am naming some parts of the formula i.e. e1x = bx - ax, e1y = by - ay, e1z = bz - az, etc.
+    This is done to avoid having to write the same formula multiple times.
+    */
+    const float e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+    const float e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
+    const float rx  = ox - ax, ry  = oy - ay, rz  = oz - az;
+ 
+    float determinant =
+        -( e1x * (e2y * dz - e2z * dy)
+        - e1y * (e2x * dz - e2z * dx)
+        + e1z * (e2x * dy - e2y * dx) );
+
+    // Early quit
+    if (std::fabs(determinant) < intersectionTestEpsilon) {
+        return false;
+    }
+    const float invDet = 1.0f / determinant;
+
+    float determinantBeta =
+        -( rx * (e2y * dz - e2z * dy)
+        - ry * (e2x * dz - e2z * dx)
+        + rz * (e2x * dy - e2y * dx) );
+    float beta = determinantBeta * invDet;
+
+    // Early quit
+    if (beta < intersectionTestEpsilon || beta > 1.0f) return false;
+ 
+    float determinantGamma =
+        -( e1x * (ry * dz - rz * dy)
+        - e1y * (rx * dz - rz * dx)
+        + e1z * (rx * dy - ry * dx) );
+    float gamma = determinantGamma * invDet;
+
+    // Early quits
+    if (gamma < intersectionTestEpsilon || gamma > 1.0f) return false;
+    if (beta + gamma > 1.0f) return false; 
+
+
+    float t = determinantT * invDet;
+
+     // Early quit
+    if (t < intersectionTestEpsilon) return false;
+
+    if(t < t_min) {
+        t_min = t;
+        intersection = Intersection{true, t, a + beta * (b - a) + gamma * (c - a), triangleNormal, material};
+        return true;
+    }
+ 
+     return false;
+}
+
+bool rayHitsMesh(
+    const Ray& ray, 
+    const Mesh& mesh, 
+    const vector<VectorFloatTriplet>& normals, 
+    const vector<VectorFloatTriplet>& vertices, 
+    const vector<float>& determinants, 
+    float& t_min, 
+    Intersection& intersection,
+    float intersectionTestEpsilon
+) {
+    for(int i = 0; i < mesh.faces.size(); i++) {
+        if(rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material)) {
+            return true;
+        }
+    }
     return false;
 }
 
-bool rayHitsMesh(const Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& normals, float& t_min, Intersection& intersection) {
-    return false;
-}
-
-Intersection intersect(const Scene& scene, const Ray& ray, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+Intersection intersect(const Scene& scene, const Ray& ray) {
     float t_min = numeric_limits<float>::max();
     Intersection intersection = Intersection{false, 0, VectorFloatTriplet{0, 0, 0}, VectorFloatTriplet{0, 0, 0}, nullptr};
     bool hit = false;
@@ -174,15 +347,15 @@ Intersection intersect(const Scene& scene, const Ray& ray, const vector<vector<V
         hit = rayHitsSphere(ray, scene.spheres[i], scene.vertices, t_min, intersection) || hit;
     }
     for(int i = 0; i < scene.triangles.size(); i++) {
-        hit = rayHitsTriangle(ray, scene.triangles[i], triangleNormals[i], scene.vertices, t_min, intersection) || hit;
+        hit = rayHitsTriangle(ray, scene.triangles[i].indices, scene.triangleNormals[i], scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, scene.cameraTriangleDeterminant[scene.currentCameraIndex][i], scene.triangles[i].material) || hit;
     }
-    // for(int i = 0; i < scene.meshes.size(); i++) {
-    //     hit = rayHitsMesh(ray, scene.meshes[i], meshNormals[i], t_min, intersection) || hit;
-    // }
+    for(int i = 0; i < scene.meshes.size(); i++) {
+        hit = rayHitsMesh(ray, scene.meshes[i], scene.meshNormals[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon) || hit;
+    }
     return intersection;
 }
 
-VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Intersection& intersection, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Intersection& intersection) {
     Material* material = intersection.material;
     VectorFloatTriplet color = VectorFloatTriplet{0, 0, 0};
     
@@ -216,9 +389,9 @@ VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Inte
     return color;
 }
 
-VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection, const vector<vector<VectorFloatTriplet>>& meshNormals, const vector<VectorFloatTriplet>& triangleNormals) {
+VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection) {
     if(intersection.hit) {
-        return computeShading(scene, ray, intersection, meshNormals, triangleNormals);
+        return computeShading(scene, ray, intersection);
     }
     return scene.backgroundColor;
 }

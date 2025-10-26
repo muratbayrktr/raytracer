@@ -19,19 +19,31 @@ int main(int argc, char* argv[])
 
     vector<vector<VectorFloatTriplet>> meshNormals;
     vector<VectorFloatTriplet> triangleNormals;
+    vector<vector<float>> cameraTriangleDeterminant;
+    vector<vector<vector<float>>> cameraMeshDeterminant;
 
     precomputeMeshNormals(scene.meshes, meshNormals, scene.vertices);
     precomputeTriangleNormals(scene.triangles, triangleNormals, scene.vertices);
+    precomputeCameraTriangleDeterminant(scene, cameraTriangleDeterminant);
+    precomputeCameraMeshDeterminant(scene, cameraMeshDeterminant);
 
-    for (auto camera : scene.cameras) {
+    scene.cameraTriangleDeterminant = cameraTriangleDeterminant;
+    scene.cameraMeshDeterminant = cameraMeshDeterminant;
+    scene.meshNormals = meshNormals;
+    scene.triangleNormals = triangleNormals;
+
+
+    for (int i = 0; i < scene.cameras.size(); i++) {
+        Camera camera = scene.cameras[i];
+        scene.currentCameraIndex = i;
         int width = camera.imageResolution.x;
         int height = camera.imageResolution.y;
         unsigned char* image = new unsigned char[width * height * 3];
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 Ray ray = castRay(camera, x, y, width, height);
-                Intersection intersection = intersect(scene, ray, meshNormals, triangleNormals);
-                VectorFloatTriplet pixelColor = computePixelColor(scene, ray, intersection, meshNormals, triangleNormals);
+                Intersection intersection = intersect(scene, ray);
+                VectorFloatTriplet pixelColor = computePixelColor(scene, ray, intersection);
                 
                 clamp(pixelColor, 0, 255);
                 image[(y * width + x) * 3] = (unsigned char) round(pixelColor.x);

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <vector>
 
 namespace scene {
     using json = nlohmann::json;
@@ -105,6 +106,15 @@ namespace scene {
         std::vector<Triangle> triangles;
         std::vector<Sphere> spheres;
         std::vector<Plane> planes;
+
+        // Additional precomputed data
+        std::vector<VectorFloatTriplet> triangleNormals;
+        std::vector<std::vector<VectorFloatTriplet>> meshNormals;
+        std::vector<std::vector<float>> cameraTriangleDeterminant;
+        std::vector<std::vector<std::vector<float>>> cameraMeshDeterminant;
+
+        // Informational variables
+        unsigned char currentCameraIndex;
 
         void loadSceneFromFile(const std::string& filename);
         
