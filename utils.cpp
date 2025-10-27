@@ -40,11 +40,17 @@ Ray castRay(const Camera& camera, int x, int y, int width, int height) {
     */
     VectorFloatTriplet ray_direction = s - e;
     VectorFloatTriplet origin = e;
-    Ray ray = Ray{origin, normalize(ray_direction), 0};
+    Ray ray = Ray{origin, normalize(ray_direction), 0, false, false, false};
     return ray;
 }
 
-bool rayHitsPlane(const Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection) {
+bool rayHitsPlane(
+    const Ray& ray, 
+    const Plane& plane, 
+    const vector<VectorFloatTriplet>& vertices, 
+    float& t_min, 
+    Intersection& intersection
+) {
         /*
             From lecture slides:
             Formula is simple (origin + t * direction - a) * normal = 0
@@ -65,7 +71,13 @@ bool rayHitsPlane(const Ray& ray, const Plane& plane, const vector<VectorFloatTr
        return false;
 }
 
-bool rayHitsSphere(const Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection) {
+bool rayHitsSphere(
+    const Ray& ray, 
+    const Sphere& sphere, 
+    const vector<VectorFloatTriplet>& vertices, 
+    float& t_min, 
+    Intersection& intersection
+) {
     /*
         From the lecture slides:
         After solving for t we get the following formula:
@@ -92,7 +104,16 @@ bool rayHitsSphere(const Ray& ray, const Sphere& sphere, const vector<VectorFloa
 }
 
 
-bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorFloatTriplet& triangleNormal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, float intersectionTestEpsilon, float determinantT, Material* material) {
+bool rayHitsTriangle(
+    const Ray& ray, 
+    const VectorIntTriplet& face, 
+    const VectorFloatTriplet& triangleNormal, 
+    const vector<VectorFloatTriplet>& vertices, 
+    float& t_min, Intersection& intersection, 
+    float intersectionTestEpsilon, 
+    float determinantT, 
+    Material* material
+) {
     VectorFloatTriplet a = vertices[face.x];
     VectorFloatTriplet b = vertices[face.y];
     VectorFloatTriplet c = vertices[face.z];
@@ -102,8 +123,6 @@ bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorF
     float ox=ray.origin.x, oy=ray.origin.y, oz=ray.origin.z, dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
     /*
     For the sake of simplicity, I am naming some parts of the formula i.e. e1x = bx - ax, e1y = by - ay, e1z = bz - az, etc.
-
-    @TODO: I need to discard the precomputed determinant whenever the ray is reflected or refracted. ORIGIN CHANGES.
     */
     const float e1x = bx - ax, e1y = by - ay, e1z = bz - az;
     const float e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
@@ -139,13 +158,13 @@ bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorF
     if (gamma < 0.0f || gamma > 1.0f) return false;
     if (beta + gamma > 1.0f) return false; 
 
-    /*
-    @TODO: I need to discard the precomputed determinant whenever the ray is reflected or refracted. ORIGIN CHANGES.
-    determinantT =
-          e1x * (e2y * rz - e2z * ry)
-        - e1y * (e2x * rz - e2z * rx)
-        + e1z * (e2x * ry - e2y * rx);
-    */
+
+    if (ray.shadowRay || ray.reflectionRay || ray.refractionRay) {
+        determinantT =
+            e1x * (e2y * rz - e2z * ry)
+            - e1y * (e2x * rz - e2z * rx)
+            + e1z * (e2x * ry - e2y * rx);
+    } // otherwise use the precomputed determinant
     float t = determinantT * invDet;
 
      // Early quit
@@ -206,25 +225,27 @@ VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Inte
     
     // Iterate through all point lights
     for (const PointLight& light : scene.pointLights) {
-        VectorFloatTriplet lightVec = light.position - intersection.point;
-        float distance = sqrt(dotProduct(lightVec, lightVec));
-        VectorFloatTriplet lightDir = normalize(lightVec);
-        VectorFloatTriplet normal = normalize(intersection.normal);
-        
-        // Distance attenuation (1/r^2)
-        float attenuation = 1.0f / (distance * distance);
-        
-        // Diffuse component
-        float diffuseFactor = max(0.0f, dotProduct(normal, lightDir));
-        VectorFloatTriplet diffuse = material->diffuseReflectance * light.intensity * diffuseFactor * attenuation;
-        
-        // Specular component (Blinn-Phong)
-        VectorFloatTriplet viewDir = normalize(-ray.direction);
-        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
-        float specularFactor = pow(max(0.0f, dotProduct(normal, halfVector)), material->phongExponent);
-        VectorFloatTriplet specular = material->specularReflectance * light.intensity * specularFactor * attenuation;
-        
-        color += diffuse + specular;
+        if (!isInShadow(scene, ray, light, intersection)) {
+            VectorFloatTriplet lightVec = light.position - intersection.point;
+            float distance = sqrt(dotProduct(lightVec, lightVec));
+            VectorFloatTriplet lightDir = normalize(lightVec);
+            VectorFloatTriplet normal = normalize(intersection.normal);
+            
+            // Distance attenuation (1/r^2)
+            float attenuation = 1.0f / (distance * distance);
+            
+            // Diffuse component
+            float diffuseFactor = max(0.0f, dotProduct(normal, lightDir));
+            VectorFloatTriplet diffuse = material->diffuseReflectance * light.intensity * diffuseFactor * attenuation;
+            
+            // Specular component (Blinn-Phong)
+            VectorFloatTriplet viewDir = normalize(-ray.direction);
+            VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+            float specularFactor = pow(max(0.0f, dotProduct(normal, halfVector)), material->phongExponent);
+            VectorFloatTriplet specular = material->specularReflectance * light.intensity * specularFactor * attenuation;
+            
+            color += diffuse + specular;
+        }
     }
     
     return color;
@@ -235,4 +256,17 @@ VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const I
         return computeShading(scene, ray, intersection);
     }
     return scene.backgroundColor;
+}
+
+bool isInShadow(const Scene& scene, const Ray& ray, const PointLight& light, const Intersection& intersection) {
+    Ray shadowRay = Ray{
+        intersection.point + scene.shadowRayEpsilon * normalize(intersection.normal),
+        normalize(light.position - intersection.point),
+        0,
+        true, // shadow ray
+        false, // reflection ray
+        false // refraction ray
+    };
+    Intersection shadowIntersection = intersect(scene, shadowRay);
+    return shadowIntersection.hit && shadowIntersection.distance < sqrt(dotProduct(light.position - intersection.point, light.position - intersection.point));
 }

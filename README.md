@@ -184,7 +184,8 @@ I still need to implement several things which I put below in order of priority,
 - [x] Fix rendering bug in meshes
    It looks like as soon as I find the intersection in the mesh check I was returning true and that caused my creepy looking bunny :D I fixed it in this commit.
 - [ ] Parsing issue with other scenes
-- [ ] Shadow rays
+- [x] Shadow rays
+       Update: I implemented the shadow rays and it works! It was really straightforward considering the fact that I just used the `intersect()` function to check with the new shadow ray. Also I updated the `Ray` struct to include the shadow ray flag. And now I am using it inside the `rayHitsTriangle` to whether to calculate the determinant on the fly or not. 
 - [ ] Reflection
 - [ ] Refraction
 - [ ] Performance optimizations

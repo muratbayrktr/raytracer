@@ -25,5 +25,7 @@ VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const I
 /* Shading Functions */
 VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Intersection& intersection);
 
+/* Shadow */
+bool isInShadow(const Scene& scene, const Ray& ray, const PointLight& light, const Intersection& intersection);
 
 #endif

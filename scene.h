@@ -142,6 +142,9 @@ namespace scene {
         VectorFloatTriplet origin;
         VectorFloatTriplet direction;
         int depth;
+        bool shadowRay;
+        bool reflectionRay;
+        bool refractionRay;
     };
 
     struct Intersection {
