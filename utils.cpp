@@ -127,7 +127,7 @@ bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorF
     float beta = determinantBeta * invDet;
 
     // Early quit
-    if (beta < intersectionTestEpsilon || beta > 1.0f) return false;
+    if (beta < 0.0f || beta > 1.0f) return false;
  
     float determinantGamma =
         -( e1x * (ry * dz - rz * dy)
@@ -136,7 +136,7 @@ bool rayHitsTriangle(const Ray& ray, const VectorIntTriplet& face, const VectorF
     float gamma = determinantGamma * invDet;
 
     // Early quits
-    if (gamma < intersectionTestEpsilon || gamma > 1.0f) return false;
+    if (gamma < 0.0f || gamma > 1.0f) return false;
     if (beta + gamma > 1.0f) return false; 
 
     /*

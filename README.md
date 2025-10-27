@@ -175,3 +175,7 @@ utils.cpp - for the implementation of the main logic
 ```
 
 The simple.json scene file is almost rendering correctly now. I’ll take a break and come back later tonight to figure out why it’s only nearly correct and then continue with the other scenes. It seems that some parsing issues are still present — probably because I skipped some of the additional guidelines at the beginning to get my raytracer running faster. I guess I’m paying for that shortcut now.
+
+## 2025-10-27
+
+I fixed the **almost correct** rendering of the simple.json scene file. It was because of the intersection test epsilon that I had been using for the `beta` and `gamma` checks. Now moving on to the other scenes.
