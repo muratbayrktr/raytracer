@@ -170,12 +170,11 @@ bool rayHitsMesh(
     Intersection& intersection,
     float intersectionTestEpsilon
 ) {
+    bool hit = false;
     for(int i = 0; i < mesh.faces.size(); i++) {
-        if(rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material)) {
-            return true;
-        }
+        hit = rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material) || hit;
     }
-    return false;
+    return hit;
 }
 
 Intersection intersect(const Scene& scene, const Ray& ray) {

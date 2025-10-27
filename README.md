@@ -179,3 +179,12 @@ The simple.json scene file is almost rendering correctly now. I’ll take a brea
 ## 2025-10-27
 
 I fixed the **almost correct** rendering of the simple.json scene file. It was because of the intersection test epsilon that I had been using for the `beta` and `gamma` checks. Now moving on to the other scenes.
+
+I still need to implement several things which I put below in order of priority, I am starting with the parsing issue first then comes the shadows.
+- [x] Fix rendering bug in meshes
+   It looks like as soon as I find the intersection in the mesh check I was returning true and that caused my creepy looking bunny :D I fixed it in this commit.
+- [ ] Parsing issue with other scenes
+- [ ] Shadow rays
+- [ ] Reflection
+- [ ] Refraction
+- [ ] Performance optimizations
