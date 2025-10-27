@@ -67,6 +67,8 @@ namespace scene {
         VectorFloatTriplet diffuseReflectance;
         VectorFloatTriplet specularReflectance;
         float phongExponent;
+        bool isMirror = false;
+        VectorFloatTriplet mirrorReflectance;
     };
 
     struct Object {
@@ -96,6 +98,7 @@ namespace scene {
         VectorFloatTriplet backgroundColor;
         float shadowRayEpsilon;
         float intersectionTestEpsilon;
+        int maxRecursionDepth = 0;
         std::vector<Camera> cameras;
         AmbientLight ambientLight;
         std::vector<PointLight> pointLights;

@@ -183,9 +183,11 @@ I fixed the **almost correct** rendering of the simple.json scene file. It was b
 I still need to implement several things which I put below in order of priority, I am starting with the parsing issue first then comes the shadows.
 - [x] Fix rendering bug in meshes
    It looks like as soon as I find the intersection in the mesh check I was returning true and that caused my creepy looking bunny :D I fixed it in this commit.
-- [ ] Parsing issue with other scenes
+- [x] Parsing issue with other scenes
+       This was a silly mistake. Some materials have conditional fields and I was trying to parse them everytime. Now I am conditionally parsing them with the `contains()` function.
 - [x] Shadow rays
        Update: I implemented the shadow rays and it works! It was really straightforward considering the fact that I just used the `intersect()` function to check with the new shadow ray. Also I updated the `Ray` struct to include the shadow ray flag. And now I am using it inside the `rayHitsTriangle` to whether to calculate the determinant on the fly or not. 
-- [ ] Reflection
+- [x] Reflection
+       Update: I implemented the reflection. Once I get the layout right, adding these features on top was easy for me tbh. My raytracer now works with the `spheres_mirror.json` scene file and it mostly looks correct. However, there is one tiny difference that the big ball where it touches the plane doesn't have enough whiteness as the ground truth. Therefore, I gotta take alook at this after I finish this completely. There might be some tiny floating point issues OR it could be something more serious.
 - [ ] Refraction
-- [ ] Performance optimizations
+- [ ] Performance optimizations -- I am thinking of threading, if I have time I will experiment with the acceleration structures.

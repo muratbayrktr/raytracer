@@ -45,7 +45,7 @@ Ray castRay(const Camera& camera, int x, int y, int width, int height) {
 }
 
 bool rayHitsPlane(
-    const Ray& ray, 
+    Ray& ray, 
     const Plane& plane, 
     const vector<VectorFloatTriplet>& vertices, 
     float& t_min, 
@@ -72,7 +72,7 @@ bool rayHitsPlane(
 }
 
 bool rayHitsSphere(
-    const Ray& ray, 
+    Ray& ray, 
     const Sphere& sphere, 
     const vector<VectorFloatTriplet>& vertices, 
     float& t_min, 
@@ -105,7 +105,7 @@ bool rayHitsSphere(
 
 
 bool rayHitsTriangle(
-    const Ray& ray, 
+    Ray& ray, 
     const VectorIntTriplet& face, 
     const VectorFloatTriplet& triangleNormal, 
     const vector<VectorFloatTriplet>& vertices, 
@@ -180,7 +180,7 @@ bool rayHitsTriangle(
 }
 
 bool rayHitsMesh(
-    const Ray& ray, 
+    Ray& ray, 
     const Mesh& mesh, 
     const vector<VectorFloatTriplet>& normals, 
     const vector<VectorFloatTriplet>& vertices, 
@@ -196,7 +196,7 @@ bool rayHitsMesh(
     return hit;
 }
 
-Intersection intersect(const Scene& scene, const Ray& ray) {
+Intersection intersect(const Scene& scene, Ray& ray) {
     float t_min = numeric_limits<float>::max();
     Intersection intersection = Intersection{false, 0, VectorFloatTriplet{0, 0, 0}, VectorFloatTriplet{0, 0, 0}, nullptr};
     bool hit = false;
@@ -215,13 +215,21 @@ Intersection intersect(const Scene& scene, const Ray& ray) {
     return intersection;
 }
 
-VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Intersection& intersection) {
+VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersection& intersection) {
     Material* material = intersection.material;
     VectorFloatTriplet color = VectorFloatTriplet{0, 0, 0};
     
     // Ambient component
     VectorFloatTriplet ambient = material->ambientReflectance * scene.ambientLight.intensity;
     color += ambient;
+
+    // Mirror check
+    if (material->isMirror) {
+        VectorFloatTriplet mirrorColor;
+        Ray reflectedRay = reflect(ray, intersection.normal, intersection.point, scene.shadowRayEpsilon);
+        Intersection reflectionIntersection = intersect(scene, reflectedRay);
+        color +=  material->mirrorReflectance * (mirrorColor = computePixelColor(scene, reflectedRay, reflectionIntersection));
+    }
     
     // Iterate through all point lights
     for (const PointLight& light : scene.pointLights) {
@@ -251,14 +259,20 @@ VectorFloatTriplet computeShading(const Scene& scene, const Ray& ray, const Inte
     return color;
 }
 
-VectorFloatTriplet computePixelColor(const Scene& scene, const Ray& ray, const Intersection& intersection) {
+VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection) {
+    if (ray.depth >= scene.maxRecursionDepth) {
+        std::cout << "Max recursion depth exceed." << std::endl;
+        return VectorFloatTriplet({0, 0, 0});
+    }
     if(intersection.hit) {
         return computeShading(scene, ray, intersection);
+    } else if (ray.depth == 0) {
+        return scene.backgroundColor;
     }
-    return scene.backgroundColor;
+    return VectorFloatTriplet({0, 0, 0});
 }
 
-bool isInShadow(const Scene& scene, const Ray& ray, const PointLight& light, const Intersection& intersection) {
+bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection) {
     Ray shadowRay = Ray{
         intersection.point + scene.shadowRayEpsilon * normalize(intersection.normal),
         normalize(light.position - intersection.point),
@@ -269,4 +283,17 @@ bool isInShadow(const Scene& scene, const Ray& ray, const PointLight& light, con
     };
     Intersection shadowIntersection = intersect(scene, shadowRay);
     return shadowIntersection.hit && shadowIntersection.distance < sqrt(dotProduct(light.position - intersection.point, light.position - intersection.point));
+}
+
+Ray reflect(Ray& ray, const VectorFloatTriplet normal, VectorFloatTriplet point, const float shadowRayEpsilon) {
+    Ray reflectedRay = Ray{
+        point,
+        // wr = -wo + 2ncosΘ = -wo + 2n(n.wo)
+        ray.direction - 2 * dotProduct(ray.direction, normal) * normal,
+        ray.depth + 1,
+        false,
+        true,
+        false
+    };
+    return reflectedRay;
 }

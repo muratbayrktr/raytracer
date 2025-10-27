@@ -86,6 +86,15 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         verbose("[!] Skipping BackgroundColor Parsing. Reason: Not found in the scene file. Assigning default value: " + std::to_string(this->backgroundColor.x) + " " + std::to_string(this->backgroundColor.y) + " " + std::to_string(this->backgroundColor.z));
     }
 
+    if (scene.contains("MaxRecursionDepth") && !scene["MaxRecursionDepth"].is_null()) {
+        std::string maxRecursionDepth = scene["MaxRecursionDepth"].get<std::string>();
+        this->maxRecursionDepth = parseSingleValue<int>(maxRecursionDepth);
+        verbose("[+] MaxRecursionDepth parsed: " + std::to_string(this->maxRecursionDepth)); 
+    } else {
+        this->maxRecursionDepth = 0;
+        verbose("[!] Skipping MaxRecursionDepth parsing. Reason: Not found in the scene file " + std::to_string(this->maxRecursionDepth)); 
+    }
+
     if (scene.contains("ShadowRayEpsilon") && !scene["ShadowRayEpsilon"].is_null()) {
         std::string shadowRayEpsilon = scene["ShadowRayEpsilon"].get<std::string>();
         this->shadowRayEpsilon = parseSingleValue<float>(shadowRayEpsilon);
@@ -272,7 +281,14 @@ scene::Material scene::parseMaterial(const json& materialData) {
     newMaterial.ambientReflectance = parseTriplet<VectorFloatTriplet>(materialData["AmbientReflectance"]);
     newMaterial.diffuseReflectance = parseTriplet<VectorFloatTriplet>(materialData["DiffuseReflectance"]);
     newMaterial.specularReflectance = parseTriplet<VectorFloatTriplet>(materialData["SpecularReflectance"]);
-    newMaterial.phongExponent = parseSingleValue<float>(materialData["PhongExponent"]);
+    if (materialData.contains("PhongExponent")) {
+        newMaterial.phongExponent = parseSingleValue<float>(materialData["PhongExponent"]);
+    } else {
+        newMaterial.phongExponent = 0;
+    }
+    if ((newMaterial.isMirror = (materialData.contains("_type") && materialData["_type"] == "mirror"))) {
+        newMaterial.mirrorReflectance = parseTriplet<VectorFloatTriplet>(materialData["MirrorReflectance"]);
+    }
     return newMaterial;
 }
 
@@ -381,6 +397,7 @@ scene::Material* scene::Scene::getMaterialById(unsigned int id) {
 void scene::Scene::getSummary() {
     std::cout << "Scene:" << std::endl;
     std::cout << "BackgroundColor: " << this->backgroundColor.x << " " << this->backgroundColor.y << " " << this->backgroundColor.z << std::endl;
+    std::cout << "MaxRecursionDepth " << this->maxRecursionDepth << std::endl;
     std::cout << "ShadowRayEpsilon: " << this->shadowRayEpsilon << std::endl;
     std::cout << "IntersectionTestEpsilon: " << this->intersectionTestEpsilon << std::endl;
     std::cout << "Cameras: " << this->cameras.size() << std::endl;
@@ -393,7 +410,7 @@ void scene::Scene::getSummary() {
     }
     std::cout << "Materials: " << this->materials.size() << "| materials: " << std::endl;
     for (auto material : this->materials) {
-        std::cout << "\t Material: " << material._id << "| AmbientReflectance: " << material.ambientReflectance.x << " " << material.ambientReflectance.y << " " << material.ambientReflectance.z << "| DiffuseReflectance: " << material.diffuseReflectance.x << " " << material.diffuseReflectance.y << " " << material.diffuseReflectance.z << "| SpecularReflectance: " << material.specularReflectance.x << " " << material.specularReflectance.y << " " << material.specularReflectance.z << "| PhongExponent: " << material.phongExponent << std::endl;
+        std::cout << "\t Material: " << material._id << "| AmbientReflectance: " << material.ambientReflectance.x << " " << material.ambientReflectance.y << " " << material.ambientReflectance.z << "| DiffuseReflectance: " << material.diffuseReflectance.x << " " << material.diffuseReflectance.y << " " << material.diffuseReflectance.z << "| SpecularReflectance: " << material.specularReflectance.x << " " << material.specularReflectance.y << " " << material.specularReflectance.z << "| PhongExponent: " << material.phongExponent << "| isMirror: " << material.isMirror << std::endl;
     }
     std::cout << "VertexData: " << this->vertices.size() << std::endl;
     std::cout << "Meshes: " << this->meshes.size() << std::endl;
