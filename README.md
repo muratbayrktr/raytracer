@@ -190,4 +190,14 @@ I still need to implement several things which I put below in order of priority,
 - [x] Reflection
        Update: I implemented the reflection. Once I get the layout right, adding these features on top was easy for me tbh. My raytracer now works with the `spheres_mirror.json` scene file and it mostly looks correct. However, there is one tiny difference that the big ball where it touches the plane doesn't have enough whiteness as the ground truth. Therefore, I gotta take alook at this after I finish this completely. There might be some tiny floating point issues OR it could be something more serious.
 - [ ] Refraction
-- [ ] Performance optimizations -- I am thinking of threading, if I have time I will experiment with the acceleration structures.
+- [x] Performance optimizations -- I am thinking of threading, if I have time I will experiment with the acceleration structures.
+- [ ] Camera types: 
+       - [ ] I need to handle not perpendicular gaze and up vectors.
+       - [ ] I need to handle the lookAt camera type.
+- [ ] Different Material Types handled differently: The values can be “mirror”, “conductor”, and “dielectric”.
+       - [x] Mirror -> This doesn't use Fresnel reflection, basic.
+       - [ ] Conductor
+       - [ ] Dielectric
+- [ ] Back face culling
+
+Update: I will implement the back-face culling and the threading with switchable options to test the performance and report my results.

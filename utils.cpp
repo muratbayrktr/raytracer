@@ -260,8 +260,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
 }
 
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection) {
-    if (ray.depth >= scene.maxRecursionDepth) {
-        std::cout << "Max recursion depth exceed." << std::endl;
+    if (ray.depth > scene.maxRecursionDepth) {
         return VectorFloatTriplet({0, 0, 0});
     }
     if(intersection.hit) {
@@ -287,7 +286,7 @@ bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Int
 
 Ray reflect(Ray& ray, const VectorFloatTriplet normal, VectorFloatTriplet point, const float shadowRayEpsilon) {
     Ray reflectedRay = Ray{
-        point,
+        point + shadowRayEpsilon * normalize(normal),
         // wr = -wo + 2ncosΘ = -wo + 2n(n.wo)
         ray.direction - 2 * dotProduct(ray.direction, normal) * normal,
         ray.depth + 1,
