@@ -9,6 +9,7 @@
 #include "json.hpp"
 #include "utils.h"
 #include "overloads.h"
+#include "happly.h"
 
 using json = nlohmann::json;
 
@@ -509,10 +510,30 @@ void scene::Scene::writePPM(const std::string& filename, unsigned char* image, i
 }
 
 std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyFile, std::vector<scene::VectorFloatTriplet>& vertexList) {
-    std::ifstream file(plyFile, std::ios::binary);
-    if (!file.is_open()) {
-        throw std::runtime_error("Error: Cannot open PLY file: " + plyFile);
+    if (!std::ifstream(plyFile).good()) {
+        throw std::runtime_error("Error: PLY file does not exist: " + plyFile);
     }
-
-    return std::vector<scene::VectorIntTriplet>();
+    happly::PLYData plyData(plyFile);
+    std::vector<std::vector<unsigned long>> faces = plyData.getFaceIndices();
+    std::vector<scene::VectorIntTriplet> facesVector = std::vector<scene::VectorIntTriplet>(faces.size());
+    for (size_t i = 0; i < faces.size(); i++) {
+        auto face = faces[i];
+        scene::VectorIntTriplet faceVector;
+        faceVector.x = face[0];
+        faceVector.y = face[1];
+        faceVector.z = face[2];
+        facesVector[i] = faceVector;
+    }
+    std::vector<std::array<double, 3>> vertices = plyData.getVertexPositions();
+    std::vector<scene::VectorFloatTriplet> verticesVector = std::vector<scene::VectorFloatTriplet>(vertices.size());
+    for (size_t i = 0; i < vertices.size(); i++) {
+        auto vertex = vertices[i];
+        scene::VectorFloatTriplet vertexVector;
+        vertexVector.x = vertex[0];
+        vertexVector.y = vertex[1];
+        vertexVector.z = vertex[2];
+        verticesVector[i] = vertexVector;
+    }
+    vertexList.insert(vertexList.end(), verticesVector.begin(), verticesVector.end());
+    return facesVector;
 }

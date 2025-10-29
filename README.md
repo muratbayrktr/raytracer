@@ -216,3 +216,5 @@ I might have to implement some acceleration structures before I finalize my home
 This is the last day of the homework. I have already fixed the issues with the camera types and I am now correcting the up vectors when they are not perpendicular to the gaze vector. Yet I still need to test my code on the bigger scenes with PLY files. For that I will have 2 main tasks: Implementing acceleration structure because even threading didn't help much with big scenes. I am thinking of using BVH for this as it fit my mind better.
 
 While taking a look at the scene files I also noticed I forgot to implement smooth shading. So it's another priority task. I am hoping to finish these before evening so that I will have time to implement Fresnel. 
+
+Update: Ply is done.
