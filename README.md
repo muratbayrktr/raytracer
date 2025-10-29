@@ -189,16 +189,17 @@ I still need to implement several things which I put below in order of priority,
        Update: I implemented the shadow rays and it works! It was really straightforward considering the fact that I just used the `intersect()` function to check with the new shadow ray. Also I updated the `Ray` struct to include the shadow ray flag. And now I am using it inside the `rayHitsTriangle` to whether to calculate the determinant on the fly or not. 
 - [x] Reflection
        Update: I implemented the reflection. Once I get the layout right, adding these features on top was easy for me tbh. My raytracer now works with the `spheres_mirror.json` scene file and it mostly looks correct. However, there is one tiny difference that the big ball where it touches the plane doesn't have enough whiteness as the ground truth. Therefore, I gotta take alook at this after I finish this completely. There might be some tiny floating point issues OR it could be something more serious.
-- [ ] Refraction
 - [x] Performance optimizations -- I am thinking of threading, if I have time I will experiment with the acceleration structures.
 - [x] Camera types: 
        - [x] I need to handle not perpendicular gaze and up vectors.
        - [x] I need to handle the lookAt camera type.
+- [x] BVH acceleration structures. Update: done.
+- [ ] Refraction
 - [ ] Different Material Types handled differently: The values can be “mirror”, “conductor”, and “dielectric”.
        - [x] Mirror -> This doesn't use Fresnel reflection, basic.
        - [ ] Conductor
        - [ ] Dielectric
-- [ ] Back face culling
+- [x] Back face culling
 - [ ] Shading modes:
        - [x] Flat
        - [ ] Smooth
@@ -218,3 +219,5 @@ This is the last day of the homework. I have already fixed the issues with the c
 While taking a look at the scene files I also noticed I forgot to implement smooth shading. So it's another priority task. I am hoping to finish these before evening so that I will have time to implement Fresnel. 
 
 Update: Ply is done.
+Update: BVH is done.
+Update: Back face culling is done.

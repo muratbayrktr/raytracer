@@ -213,7 +213,8 @@ bool MeshBVH::traverse(
     const std::vector<float>& determinants,
     float& t_min,
     Intersection& intersection,
-    float intersectionTestEpsilon
+    float intersectionTestEpsilon,
+    bool enableBackFaceCulling
 ) const {
     if (nodes.empty()) {
         return false;
@@ -248,7 +249,8 @@ bool MeshBVH::traverse(
                     intersection,
                     intersectionTestEpsilon,
                     determinants[faceIdx],
-                    mesh.material
+                    mesh.material,
+                    enableBackFaceCulling
                 )) {
                     hit = true;
                 }

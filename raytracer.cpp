@@ -103,23 +103,22 @@ void singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int heigh
     std::cout << "Single-threaded ray tracing time: " << duration.count() << " milliseconds" << std::endl;
 }
 
-struct Args {
-    string sceneFile;
-    bool isMultiThreaded;
-    bool useBVH;
-};
-
-Args parseArgs(int argc, char* argv[]) {
-    Args args;
+scene::Args parseArgs(int argc, char* argv[]) {
+    scene::Args args;
     args.sceneFile = argv[1];
     args.isMultiThreaded = true;
     args.useBVH = true;
+    args.enableBackFaceCulling = true;
+    
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "-m") == 0) {
             args.isMultiThreaded = false;
         }
         if (strcmp(argv[i], "-b") == 0) {
             args.useBVH = false;
+        }
+        if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--no-cull") == 0) {
+            args.enableBackFaceCulling = false;
         }
     }
     return args;
@@ -129,10 +128,11 @@ Args parseArgs(int argc, char* argv[]) {
 int main(int argc, char* argv[])
 {
 
-    Args args = parseArgs(argc, argv);
+    scene::Args args = parseArgs(argc, argv);
 
     Scene scene;
     scene.loadSceneFromFile(args.sceneFile);
+    scene.enableBackFaceCulling = args.enableBackFaceCulling;
 
     scene.getSummary();
 

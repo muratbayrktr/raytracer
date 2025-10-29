@@ -73,7 +73,8 @@ namespace scene {
             const std::vector<float>& determinants,
             float& t_min,
             Intersection& intersection,
-            float intersectionTestEpsilon
+            float intersectionTestEpsilon,
+            bool enableBackFaceCulling = true
         ) const;
         
     private:

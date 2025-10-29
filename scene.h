@@ -124,7 +124,8 @@ namespace scene {
         // Informational variables
         unsigned char currentCameraIndex;
         std::string baseDirectory;
-
+        
+        bool enableBackFaceCulling = true;
         void loadSceneFromFile(const std::string& filename);
         
         Material* getMaterialById(unsigned int id);
@@ -169,6 +170,14 @@ namespace scene {
         VectorFloatTriplet point;
         VectorFloatTriplet normal;
         Material* material;
+    };
+
+    struct Args {
+        std::string sceneFile;
+        bool isMultiThreaded;
+        bool useBVH;
+        bool enableBackFaceCulling;
+        Args() : isMultiThreaded(true), useBVH(true), enableBackFaceCulling(true) {}
     };
 }
 

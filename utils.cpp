@@ -113,7 +113,8 @@ bool rayHitsTriangle(
     float& t_min, Intersection& intersection, 
     float intersectionTestEpsilon, 
     float determinantT, 
-    Material* material
+    Material* material,
+    bool enableBackFaceCulling
 ) {
     VectorFloatTriplet a = vertices[face.x];
     VectorFloatTriplet b = vertices[face.y];
@@ -133,6 +134,14 @@ bool rayHitsTriangle(
         -( e1x * (e2y * dz - e2z * dy)
         - e1y * (e2x * dz - e2z * dx)
         + e1z * (e2x * dy - e2y * dx) );
+
+    // Early quit
+    if (enableBackFaceCulling) {
+        float dotDirNormal = dotProduct(ray.direction, triangleNormal);
+        if (dotDirNormal > 0.0f) {
+            return false;
+        }
+    }
 
     // Early quit
     if (std::fabs(determinant) < intersectionTestEpsilon) {
@@ -189,14 +198,15 @@ bool rayHitsMesh(
     float& t_min, 
     Intersection& intersection,
     float intersectionTestEpsilon,
-    scene::MeshBVH* bvh
+    scene::MeshBVH* bvh,
+    bool enableBackFaceCulling
 ) {
     if (bvh != nullptr) {
-        return bvh->traverse(ray, mesh, normals, vertices, determinants, t_min, intersection, intersectionTestEpsilon);
+        return bvh->traverse(ray, mesh, normals, vertices, determinants, t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling);
     }
     bool hit = false;
     for(int i = 0; i < mesh.faces.size(); i++) {
-        hit = rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material) || hit;
+        hit = rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material, enableBackFaceCulling) || hit;
     }
     return hit;
 }
@@ -212,11 +222,11 @@ Intersection intersect(const Scene& scene, Ray& ray) {
         hit = rayHitsSphere(ray, scene.spheres[i], scene.vertices, t_min, intersection) || hit;
     }
     for(int i = 0; i < scene.triangles.size(); i++) {
-        hit = rayHitsTriangle(ray, scene.triangles[i].indices, scene.triangleNormals[i], scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, scene.cameraTriangleDeterminant[scene.currentCameraIndex][i], scene.triangles[i].material) || hit;
+        hit = rayHitsTriangle(ray, scene.triangles[i].indices, scene.triangleNormals[i], scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, scene.cameraTriangleDeterminant[scene.currentCameraIndex][i], scene.triangles[i].material, scene.enableBackFaceCulling) || hit;
     }
     for(int i = 0; i < scene.meshes.size(); i++) {
         MeshBVH* bvh = (i < scene.meshBVHs.size()) ? scene.meshBVHs[i] : nullptr;
-        hit = rayHitsMesh(ray, scene.meshes[i], scene.meshNormals[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon, bvh) || hit;
+        hit = rayHitsMesh(ray, scene.meshes[i], scene.meshNormals[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon, bvh, scene.enableBackFaceCulling) || hit;
     }
     return intersection;
 }
