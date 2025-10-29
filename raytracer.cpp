@@ -152,6 +152,9 @@ int main(int argc, char* argv[])
     scene.meshNormals = meshNormals;
     scene.triangleNormals = triangleNormals;
 
+    if (args.useBVH) {
+        scene.buildBVH();
+    }
 
     for (int i = 0; i < scene.cameras.size(); i++) {
         Camera camera = scene.cameras[i];

@@ -5,6 +5,7 @@
 #include "scene.h"
 #include "utils.h"
 #include "overloads.h"
+#include "bvh.h"
 
 using namespace std;
 using namespace scene;
@@ -187,8 +188,12 @@ bool rayHitsMesh(
     const vector<float>& determinants, 
     float& t_min, 
     Intersection& intersection,
-    float intersectionTestEpsilon
+    float intersectionTestEpsilon,
+    scene::MeshBVH* bvh
 ) {
+    if (bvh != nullptr) {
+        return bvh->traverse(ray, mesh, normals, vertices, determinants, t_min, intersection, intersectionTestEpsilon);
+    }
     bool hit = false;
     for(int i = 0; i < mesh.faces.size(); i++) {
         hit = rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material) || hit;
@@ -210,7 +215,8 @@ Intersection intersect(const Scene& scene, Ray& ray) {
         hit = rayHitsTriangle(ray, scene.triangles[i].indices, scene.triangleNormals[i], scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, scene.cameraTriangleDeterminant[scene.currentCameraIndex][i], scene.triangles[i].material) || hit;
     }
     for(int i = 0; i < scene.meshes.size(); i++) {
-        hit = rayHitsMesh(ray, scene.meshes[i], scene.meshNormals[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon) || hit;
+        MeshBVH* bvh = (i < scene.meshBVHs.size()) ? scene.meshBVHs[i] : nullptr;
+        hit = rayHitsMesh(ray, scene.meshes[i], scene.meshNormals[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon, bvh) || hit;
     }
     return intersection;
 }

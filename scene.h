@@ -10,6 +10,9 @@
 
 namespace scene {
     using json = nlohmann::json;
+    
+
+    class MeshBVH;
 
     /*
     * Atomic vector types
@@ -116,6 +119,8 @@ namespace scene {
         std::vector<std::vector<float>> cameraTriangleDeterminant;
         std::vector<std::vector<std::vector<float>>> cameraMeshDeterminant;
 
+        std::vector<MeshBVH*> meshBVHs;
+
         // Informational variables
         unsigned char currentCameraIndex;
         std::string baseDirectory;
@@ -132,9 +137,10 @@ namespace scene {
 
         std::vector<VectorIntTriplet> parseFaces(const json& facesData);
         
-
+        void buildBVH();
+        
         void getSummary();
-
+        
         void writePPM(const std::string& filename, unsigned char* image, int width, int height);
     };
 

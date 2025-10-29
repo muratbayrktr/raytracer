@@ -17,7 +17,7 @@ Intersection intersect(const Scene& scene, Ray& ray);
 bool rayHitsPlane(Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection);
 bool rayHitsSphere(Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection);
 bool rayHitsTriangle(Ray& ray, const VectorIntTriplet& face, const VectorFloatTriplet& triangleNormal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, float intersectionTestEpsilon, float determinantT, Material* material);
-bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& normals, const vector<VectorFloatTriplet>& vertices, const vector<float>& determinants, float& t_min, Intersection& intersection, float intersectionTestEpsilon);
+bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& normals, const vector<VectorFloatTriplet>& vertices, const vector<float>& determinants, float& t_min, Intersection& intersection, float intersectionTestEpsilon, scene::MeshBVH* bvh = nullptr);
 
 /* Pixel Color Functions */
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection);

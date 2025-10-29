@@ -10,6 +10,7 @@
 #include "utils.h"
 #include "overloads.h"
 #include "happly.h"
+#include "bvh.h"
 
 using json = nlohmann::json;
 
@@ -129,7 +130,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         auto cameras = scene["Cameras"];
         auto cameraDataArray = cameras["Camera"];
         if (cameraDataArray.is_array()) {
-            std::cout << "parsing camera array" << std::endl;
+            verbose("parsing camera array");
             for (auto cameraData : cameraDataArray) {
                 scene::Camera newCamera = parseCamera(cameraData);
                 if (newCamera._id != 0) {
@@ -307,7 +308,7 @@ scene::Camera scene::parseCamera(const json& cameraData) {
         newCamera.up = v;
         verbose("[+] Gaze and Up vectors are not perpendicular. Correcting the up vector.");
     }
-            return newCamera;
+    return newCamera;
 }
 
 scene::PointLight scene::parsePointLight(const json& pointLightData) {
@@ -349,18 +350,18 @@ std::vector<scene::VectorFloatTriplet> scene::parseVertex(const json& vertexData
 std::vector<scene::VectorIntTriplet> scene::Scene::parseFaces(const json& facesData) {
     if (facesData.contains("_data")) {
         auto facesDataArray = facesData["_data"];
-    std::stringstream stream(facesDataArray.get<std::string>());
-    std::vector<scene::VectorIntTriplet> faces;
-    scene::VectorIntTriplet face;
-    while (stream >> face.x >> face.y >> face.z) {
-        // Convert from 1-based to 0-based indexing
-        face.x -= 1;
-        face.y -= 1;
-        face.z -= 1;
-        faces.push_back(face);
-    }
-    stream.clear();
-    return faces;
+        std::stringstream stream(facesDataArray.get<std::string>());
+        std::vector<scene::VectorIntTriplet> faces;
+        scene::VectorIntTriplet face;
+        while (stream >> face.x >> face.y >> face.z) {
+            // Convert from 1-based to 0-based indexing
+            face.x -= 1;
+            face.y -= 1;
+            face.z -= 1;
+            faces.push_back(face);
+        }
+        stream.clear();
+        return faces;
     } else if (facesData.contains("_plyFile")) {
         std::string plyFile = facesData["_plyFile"].get<std::string>();
         std::string fullPath = this->baseDirectory + plyFile;
@@ -449,39 +450,39 @@ scene::Material* scene::Scene::getMaterialById(unsigned int id) {
 
 
 void scene::Scene::getSummary() {
-    std::cout << "Scene:" << std::endl;
-    std::cout << "BackgroundColor: " << this->backgroundColor.x << " " << this->backgroundColor.y << " " << this->backgroundColor.z << std::endl;
-    std::cout << "MaxRecursionDepth " << this->maxRecursionDepth << std::endl;
-    std::cout << "ShadowRayEpsilon: " << this->shadowRayEpsilon << std::endl;
-    std::cout << "IntersectionTestEpsilon: " << this->intersectionTestEpsilon << std::endl;
-    std::cout << "Cameras: " << this->cameras.size() << std::endl;
+    verbose("Scene:");
+    verbose("BackgroundColor: " + std::to_string(this->backgroundColor.x) + " " + std::to_string(this->backgroundColor.y) + " " + std::to_string(this->backgroundColor.z));
+    verbose("MaxRecursionDepth " + std::to_string(this->maxRecursionDepth));
+    verbose("ShadowRayEpsilon: " + std::to_string(this->shadowRayEpsilon));
+    verbose("IntersectionTestEpsilon: " + std::to_string(this->intersectionTestEpsilon));
+    verbose("Cameras: " + std::to_string(this->cameras.size()));
     for (auto camera : this->cameras) {
-        std::cout << "\t Camera: " << camera._id << "| Position: " << camera.position.x << " " << camera.position.y << " " << camera.position.z << "| Gaze: " << camera.gaze.x << " " << camera.gaze.y << " " << camera.gaze.z << "| Up: " << camera.up.x << " " << camera.up.y << " " << camera.up.z << "| NearPlane: " << camera.nearPlane.x << " " << camera.nearPlane.y << " " << camera.nearPlane.z << " " << camera.nearPlane.w << "| NearDistance: " << camera.nearDistance << "| ImageResolution: " << camera.imageResolution.x << " " << camera.imageResolution.y << "| ImageName: " << camera.imageName << std::endl;
+        verbose("\t Camera: " + std::to_string(camera._id) + "| Position: " + std::to_string(camera.position.x) + " " + std::to_string(camera.position.y) + " " + std::to_string(camera.position.z) + "| Gaze: " + std::to_string(camera.gaze.x) + " " + std::to_string(camera.gaze.y) + " " + std::to_string(camera.gaze.z) + "| Up: " + std::to_string(camera.up.x) + " " + std::to_string(camera.up.y) + " " + std::to_string(camera.up.z) + "| NearPlane: " + std::to_string(camera.nearPlane.x) + " " + std::to_string(camera.nearPlane.y) + " " + std::to_string(camera.nearPlane.z) + " " + std::to_string(camera.nearPlane.w) + "| NearDistance: " + std::to_string(camera.nearDistance) + "| ImageResolution: " + std::to_string(camera.imageResolution.x) + " " + std::to_string(camera.imageResolution.y) + "| ImageName: " + camera.imageName);
     }
-    std::cout << "Lights: " << this->pointLights.size() << "| lights: " << std::endl;
+    verbose("Lights: " + std::to_string(this->pointLights.size()) + "| lights: ");
     for (auto light : this->pointLights) {
-        std::cout << "\t Light: " << light._id << "| Position: " << light.position.x << " " << light.position.y << " " << light.position.z << "| Intensity: " << light.intensity.x << " " << light.intensity.y << " " << light.intensity.z << std::endl;
+        verbose("\t Light: " + std::to_string(light._id) + "| Position: " + std::to_string(light.position.x) + " " + std::to_string(light.position.y) + " " + std::to_string(light.position.z) + "| Intensity: " + std::to_string(light.intensity.x) + " " + std::to_string(light.intensity.y) + " " + std::to_string(light.intensity.z));
     }
-    std::cout << "Materials: " << this->materials.size() << "| materials: " << std::endl;
+    verbose("Materials: " + std::to_string(this->materials.size()) + "| materials: ");
     for (auto material : this->materials) {
-        std::cout << "\t Material: " << material._id << "| AmbientReflectance: " << material.ambientReflectance.x << " " << material.ambientReflectance.y << " " << material.ambientReflectance.z << "| DiffuseReflectance: " << material.diffuseReflectance.x << " " << material.diffuseReflectance.y << " " << material.diffuseReflectance.z << "| SpecularReflectance: " << material.specularReflectance.x << " " << material.specularReflectance.y << " " << material.specularReflectance.z << "| PhongExponent: " << material.phongExponent << "| isMirror: " << material.isMirror << std::endl;
+        verbose("\t Material: " + std::to_string(material._id) + "| AmbientReflectance: " + std::to_string(material.ambientReflectance.x) + " " + std::to_string(material.ambientReflectance.y) + " " + std::to_string(material.ambientReflectance.z) + "| DiffuseReflectance: " + std::to_string(material.diffuseReflectance.x) + " " + std::to_string(material.diffuseReflectance.y) + " " + std::to_string(material.diffuseReflectance.z) + "| SpecularReflectance: " + std::to_string(material.specularReflectance.x) + " " + std::to_string(material.specularReflectance.y) + " " + std::to_string(material.specularReflectance.z) + "| PhongExponent: " + std::to_string(material.phongExponent) + "| isMirror: " + std::to_string(material.isMirror));
     }
-    std::cout << "VertexData: " << this->vertices.size() << std::endl;
-    std::cout << "Meshes: " << this->meshes.size() << std::endl;
+    verbose("VertexData: " + std::to_string(this->vertices.size()));
+    verbose("Meshes: " + std::to_string(this->meshes.size()));
     for (auto mesh : this->meshes) {
-        std::cout << "\t Mesh: " << mesh._id << "| Faces: " << mesh.faces.size() << std::endl;
+        verbose("\t Mesh: " + std::to_string(mesh._id) + "| Faces: " + std::to_string(mesh.faces.size()));
     }
-    std::cout << "Triangles: " << this->triangles.size() << std::endl;
+    verbose("Triangles: " + std::to_string(this->triangles.size()));
     for (auto triangle : this->triangles) {
-        std::cout << "\t Triangle: " << triangle._id << "| Indices: " << triangle.indices.x << " " << triangle.indices.y << " " << triangle.indices.z << std::endl;
+        verbose("\t Triangle: " + std::to_string(triangle._id) + "| Indices: " + std::to_string(triangle.indices.x) + " " + std::to_string(triangle.indices.y) + " " + std::to_string(triangle.indices.z));
     }
-    std::cout << "Spheres: " << this->spheres.size() << std::endl;
+    verbose("Spheres: " + std::to_string(this->spheres.size()));
     for (auto sphere : this->spheres) {
-        std::cout << "\t Sphere: " << sphere._id << "| Center: " << sphere.center << " " << sphere.radius << std::endl;
+        verbose("\t Sphere: " + std::to_string(sphere._id) + "| Center: " + std::to_string(sphere.center) + " " + std::to_string(sphere.radius));
     }
-    std::cout << "Planes: " << this->planes.size() << std::endl;
+    verbose("Planes: " + std::to_string(this->planes.size()));
     for (auto plane : this->planes) {
-        std::cout << "\t Plane: " << plane._id << "| Point Index: " << plane.point << "| Normal: " << plane.normal.x << " " << plane.normal.y << " " << plane.normal.z << std::endl;
+        verbose("\t Plane: " + std::to_string(plane._id) + "| Point Index: " + std::to_string(plane.point) + "| Normal: " + std::to_string(plane.normal.x) + " " + std::to_string(plane.normal.y) + " " + std::to_string(plane.normal.z));
     }
 }
 
@@ -536,4 +537,34 @@ std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyF
     }
     vertexList.insert(vertexList.end(), verticesVector.begin(), verticesVector.end());
     return facesVector;
+}
+
+
+void scene::Scene::buildBVH() {
+    verbose("================================================");
+    verbose("Building BVH acceleration structures...");
+    verbose("================================================");
+    std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
+    for (auto bvh : meshBVHs) {
+        delete bvh;
+    }
+    meshBVHs.clear();
+    
+    meshBVHs.resize(meshes.size());
+    for (size_t i = 0; i < meshes.size(); i++) {
+        if (meshes[i].faces.size() > 0) {
+            verbose("[BVH] Building BVH for mesh " + std::to_string(i) + " (" + 
+                   std::to_string(meshes[i].faces.size()) + " faces)...");
+            
+            meshBVHs[i] = new scene::MeshBVH();
+            meshBVHs[i]->build(meshes[i], vertices);
+        } else {
+            meshBVHs[i] = nullptr;
+        }
+    }
+    std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+    verbose("================================================");
+    verbose("BVH construction complete in " + std::to_string(duration.count()) + " milliseconds");
+    verbose("================================================");
 }
