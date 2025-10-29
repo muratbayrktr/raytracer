@@ -12,3 +12,7 @@ raytracer
 
 # Error logs
 *.err
+
+# PNGs
+*.png
+*.PNG
