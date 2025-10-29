@@ -7,6 +7,8 @@
 
 #include "scene.h"
 #include "json.hpp"
+#include "utils.h"
+#include "overloads.h"
 
 using json = nlohmann::json;
 
@@ -61,6 +63,14 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         throw std::runtime_error("Error: The json file cannot be loaded.");
     }
 
+    // Extract base directory from filename
+    size_t lastSlash = filename.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        this->baseDirectory = filename.substr(0, lastSlash + 1);
+    } else {
+        this->baseDirectory = "";
+    }
+
     json j;
     file >> j;
     file.close();
@@ -73,6 +83,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
     if (VERBOSE) {
         verbose("================================================");
         verbose("Parsing Scene File: " + filename);
+        verbose("Base Directory: " + this->baseDirectory);
         verbose("================================================");
     }
 
@@ -247,14 +258,35 @@ scene::Camera scene::parseCamera(const json& cameraData) {
             cameraType = 1;
         } 
     }
+    scene::Camera newCamera = scene::Camera();
     switch (cameraType) {
-        case 1:
-            // TODO: I'll implement this later i.e. other_dragon.json
-            verbose("[-] Skipping camera parsing type is: " + cameraData["_type"].get<std::string>());
-            return scene::Camera();
+        case 1: {
+            newCamera._id = parseSingleValue<unsigned int>(cameraData["_id"]);
+            newCamera.position = parseTriplet<VectorFloatTriplet>(cameraData["Position"]);
+            newCamera.up = parseTriplet<VectorFloatTriplet>(cameraData["Up"]);
+            newCamera.nearDistance = parseSingleValue<float>(cameraData["NearDistance"]);
+            newCamera.imageResolution = parsePair<VectorIntPair>(cameraData["ImageResolution"]);
+            newCamera.imageName = cameraData["ImageName"].get<std::string>();
+            // Calculate the gaze vector, nearplane
+            // Gaze: GazePoint - Position
+            VectorFloatTriplet gazePoint = parseTriplet<VectorFloatTriplet>(cameraData["GazePoint"]);
+            VectorFloatTriplet gaze = normalize(gazePoint - newCamera.position);
+            newCamera.gaze = gaze;
+
+            // NearPlane: 
+            float fovY = parseSingleValue<float>(cameraData["FovY"]);
+            float fovX = fovY * newCamera.imageResolution.x / newCamera.imageResolution.y;
+            float nearPlaneWidth = 2 * tan(fovX / 2) * newCamera.nearDistance;
+            float nearPlaneHeight = 2 * tan(fovY / 2) * newCamera.nearDistance;
+            newCamera.nearPlane = VectorFloatQuad{nearPlaneWidth, nearPlaneHeight, -nearPlaneWidth / 2, nearPlaneHeight / 2};
+            verbose("[+!] Camera Type: lookAt Parsed Successfully");
+            verbose("[+] Gaze vector calculated: " + std::to_string(newCamera.gaze.x) + " " + std::to_string(newCamera.gaze.y) + " " + std::to_string(newCamera.gaze.z));
+            verbose("[+] NearPlane calculated: " + std::to_string(newCamera.nearPlane.x) + " " + std::to_string(newCamera.nearPlane.y) + " " + std::to_string(newCamera.nearPlane.z) + " " + std::to_string(newCamera.nearPlane.w));
+            verbose("[+] Camera Parsed Successfully");
+            break;
+        }
         case 0:
-        default:
-            scene::Camera newCamera;
+        default: {
             newCamera._id = parseSingleValue<unsigned int>(cameraData["_id"]);
             newCamera.position = parseTriplet<VectorFloatTriplet>(cameraData["Position"]);
             newCamera.gaze = parseTriplet<VectorFloatTriplet>(cameraData["Gaze"]);
@@ -263,8 +295,18 @@ scene::Camera scene::parseCamera(const json& cameraData) {
             newCamera.nearDistance = parseSingleValue<float>(cameraData["NearDistance"]);
             newCamera.imageResolution = parsePair<VectorIntPair>(cameraData["ImageResolution"]);
             newCamera.imageName = cameraData["ImageName"].get<std::string>();
-            return newCamera;
+            break;
+        }
     }
+    if (dotProduct(newCamera.gaze, newCamera.up) != 0) {
+        VectorFloatTriplet w = normalize(-newCamera.gaze);
+        VectorFloatTriplet vPrime = normalize(newCamera.up);
+        VectorFloatTriplet u = crossProduct(vPrime, w);
+        VectorFloatTriplet v = crossProduct(w, u);
+        newCamera.up = v;
+        verbose("[+] Gaze and Up vectors are not perpendicular. Correcting the up vector.");
+    }
+            return newCamera;
 }
 
 scene::PointLight scene::parsePointLight(const json& pointLightData) {
@@ -303,8 +345,9 @@ std::vector<scene::VectorFloatTriplet> scene::parseVertex(const json& vertexData
     return vertices;   
 }
 
-std::vector<scene::VectorIntTriplet> scene::parseFaces(const json& facesData) {
-    auto facesDataArray = facesData["_data"]; // "122 163 1640 623 ..."
+std::vector<scene::VectorIntTriplet> scene::Scene::parseFaces(const json& facesData) {
+    if (facesData.contains("_data")) {
+        auto facesDataArray = facesData["_data"];
     std::stringstream stream(facesDataArray.get<std::string>());
     std::vector<scene::VectorIntTriplet> faces;
     scene::VectorIntTriplet face;
@@ -317,6 +360,16 @@ std::vector<scene::VectorIntTriplet> scene::parseFaces(const json& facesData) {
     }
     stream.clear();
     return faces;
+    } else if (facesData.contains("_plyFile")) {
+        std::string plyFile = facesData["_plyFile"].get<std::string>();
+        std::string fullPath = this->baseDirectory + plyFile;
+        // parsePLYFile will add vertices to this->vertices and return adjusted faces
+        std::vector<scene::VectorIntTriplet> faces = parsePLYFile(fullPath, this->vertices);
+        return faces;
+    } else {
+        verbose("[!] Skipping Faces Parsing. Reason: Not found in the scene file.");
+        return std::vector<scene::VectorIntTriplet>();
+    }
 }
 
 template<typename T> 
@@ -453,4 +506,13 @@ void scene::Scene::writePPM(const std::string& filename, unsigned char* image, i
     }
     fprintf(outfile, "\n");
     fclose(outfile);
+}
+
+std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyFile, std::vector<scene::VectorFloatTriplet>& vertexList) {
+    std::ifstream file(plyFile, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Error: Cannot open PLY file: " + plyFile);
+    }
+
+    return std::vector<scene::VectorIntTriplet>();
 }

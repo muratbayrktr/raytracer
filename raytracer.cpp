@@ -159,7 +159,7 @@ int main(int argc, char* argv[])
         int width = camera.imageResolution.x;
         int height = camera.imageResolution.y;
         unsigned char* image = new unsigned char[width * height * 3];
-        if (argc > 2 && strcmp(argv[2], "multi") == 0) {
+        if (args.isMultiThreaded) {
             multiThreadedRayTracing(scene, camera, width, height, image);
         } else {
             singleThreadedRayTracing(scene, camera, width, height, image);

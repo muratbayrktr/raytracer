@@ -118,6 +118,7 @@ namespace scene {
 
         // Informational variables
         unsigned char currentCameraIndex;
+        std::string baseDirectory;
 
         void loadSceneFromFile(const std::string& filename);
         
@@ -129,6 +130,9 @@ namespace scene {
         template<typename T>
         void parseSpecificAttributes(T& object, const json& objectData);
 
+        std::vector<VectorIntTriplet> parseFaces(const json& facesData);
+        
+
         void getSummary();
 
         void writePPM(const std::string& filename, unsigned char* image, int width, int height);
@@ -138,7 +142,10 @@ namespace scene {
     PointLight parsePointLight(const json& pointLightData);
     Material parseMaterial(const json& materialData);
     std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
-    std::vector<VectorIntTriplet> parseFaces(const json& facesData);
+    
+    std::vector<VectorIntTriplet> parsePLYFile(const std::string& plyFile, 
+                                                std::vector<VectorFloatTriplet>& vertexList);
+    
     Object parseObject(const json& objectData);
 
     struct Ray {

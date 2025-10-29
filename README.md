@@ -191,13 +191,28 @@ I still need to implement several things which I put below in order of priority,
        Update: I implemented the reflection. Once I get the layout right, adding these features on top was easy for me tbh. My raytracer now works with the `spheres_mirror.json` scene file and it mostly looks correct. However, there is one tiny difference that the big ball where it touches the plane doesn't have enough whiteness as the ground truth. Therefore, I gotta take alook at this after I finish this completely. There might be some tiny floating point issues OR it could be something more serious.
 - [ ] Refraction
 - [x] Performance optimizations -- I am thinking of threading, if I have time I will experiment with the acceleration structures.
-- [ ] Camera types: 
-       - [ ] I need to handle not perpendicular gaze and up vectors.
-       - [ ] I need to handle the lookAt camera type.
+- [x] Camera types: 
+       - [x] I need to handle not perpendicular gaze and up vectors.
+       - [x] I need to handle the lookAt camera type.
 - [ ] Different Material Types handled differently: The values can be “mirror”, “conductor”, and “dielectric”.
        - [x] Mirror -> This doesn't use Fresnel reflection, basic.
        - [ ] Conductor
        - [ ] Dielectric
 - [ ] Back face culling
+- [ ] Shading modes:
+       - [x] Flat
+       - [ ] Smooth
 
 Update: I will implement the back-face culling and the threading with switchable options to test the performance and report my results.
+
+## 2025-10-28 
+
+I have implemented the problems with the camera types and that parsing PLY files. However, these scenes are taking forever to render even on my 10 core M2 Pro chip. I have already observed significant improvement with threading on other scenes yet it looks like with scene growing, the time to render also increases significantly.
+
+I might have to implement some acceleration structures before I finalize my homework to test and observe the result in other scenes with PLY files.
+
+## 2025-10-29
+
+This is the last day of the homework. I have already fixed the issues with the camera types and I am now correcting the up vectors when they are not perpendicular to the gaze vector. Yet I still need to test my code on the bigger scenes with PLY files. For that I will have 2 main tasks: Implementing acceleration structure because even threading didn't help much with big scenes. I am thinking of using BVH for this as it fit my mind better.
+
+While taking a look at the scene files I also noticed I forgot to implement smooth shading. So it's another priority task. I am hoping to finish these before evening so that I will have time to implement Fresnel. 

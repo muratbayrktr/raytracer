@@ -11,9 +11,13 @@ void precomputeMeshNormals(
     vector<vector<VectorFloatTriplet>>& meshNormals, 
     const vector<VectorFloatTriplet>& vertices
 ) {
+    // TODO: I should implement smoothly shaded normals
     meshNormals.reserve(meshes.size());
-    for (const Mesh& mesh : meshes) {
+    for (size_t meshIdx = 0; meshIdx < meshes.size(); meshIdx++) {
+        const Mesh& mesh = meshes[meshIdx];
         meshNormals.push_back(vector<VectorFloatTriplet>());
+        meshNormals.back().reserve(mesh.faces.size());
+        
         for (const VectorIntTriplet& face : mesh.faces) {
             VectorFloatTriplet v0 = vertices[face.x];
             VectorFloatTriplet v1 = vertices[face.y];
