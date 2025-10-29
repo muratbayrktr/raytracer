@@ -192,7 +192,7 @@ namespace scene {
         bool isMultiThreaded;
         bool useBVH;
         bool enableBackFaceCulling;
-        Args() : isMultiThreaded(true), useBVH(true), enableBackFaceCulling(true) {}
+        Args() : isMultiThreaded(true), useBVH(false), enableBackFaceCulling(true) {}
     };
 }
 

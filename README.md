@@ -14,6 +14,19 @@ after that use following to produce the output images from JSON scene files:
 
 where `scene.json` is the JSON scene file you want to render.
 
+### Optional Arguments
+By default, below options are enabled except for BVH -- Because it's currently buggy:
+```
+-m: Disable multi-threading
+-b: Enable BVH
+-c: Disable back face culling
+```
+
+For instance, to disable multi-threading, you can run:
+```
+./raytracer ../inputs/scene.json -m 1 -b 0 -c 1
+```
+
 # Logs 
 
 ## Until 2025-10-21

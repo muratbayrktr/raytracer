@@ -8,7 +8,7 @@
 #include <vector>
 #include <chrono>
 #include <unistd.h>
-#define OUTPUT_PATH "../my_outputs/"
+#define OUTPUT_PATH "./"
 using namespace std;
 using namespace scene;
 
