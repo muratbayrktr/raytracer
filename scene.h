@@ -72,6 +72,10 @@ namespace scene {
         float phongExponent;
         bool isMirror = false;
         VectorFloatTriplet mirrorReflectance;
+        std::string type = "";
+        float refractionIndex = 1.0f;
+        float absorptionIndex = 0.0f;
+        VectorFloatTriplet absorptionCoefficient = {0, 0, 0};
     };
 
     struct Object {

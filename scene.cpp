@@ -330,8 +330,22 @@ scene::Material scene::parseMaterial(const json& materialData) {
     } else {
         newMaterial.phongExponent = 0;
     }
-    if ((newMaterial.isMirror = (materialData.contains("_type") && materialData["_type"] == "mirror"))) {
-        newMaterial.mirrorReflectance = parseTriplet<VectorFloatTriplet>(materialData["MirrorReflectance"]);
+    // Parse material type and Fresnel properties
+    if (materialData.contains("_type") && !materialData["_type"].is_null()) {
+        newMaterial.type = materialData["_type"].get<std::string>();
+        newMaterial.isMirror = (newMaterial.type == "mirror");
+        if (materialData.contains("MirrorReflectance")) {
+            newMaterial.mirrorReflectance = parseTriplet<VectorFloatTriplet>(materialData["MirrorReflectance"]);
+        }
+        if (materialData.contains("RefractionIndex")) {
+            newMaterial.refractionIndex = parseSingleValue<float>(materialData["RefractionIndex"]);
+        }
+        if (materialData.contains("AbsorptionIndex")) {
+            newMaterial.absorptionIndex = parseSingleValue<float>(materialData["AbsorptionIndex"]);
+        }
+        if (materialData.contains("AbsorptionCoefficient")) {
+            newMaterial.absorptionCoefficient = parseTriplet<VectorFloatTriplet>(materialData["AbsorptionCoefficient"]);
+        }
     }
     return newMaterial;
 }

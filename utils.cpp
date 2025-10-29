@@ -295,6 +295,60 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
     Material* material = intersection.material;
     VectorFloatTriplet color = VectorFloatTriplet{0, 0, 0};
     
+    if (material->type == "conductor") {
+        float cosTheta = fabs(dotProduct(-ray.direction, intersection.geometricNormal));
+        float F = fresnelConductor(cosTheta, material->refractionIndex, material->absorptionIndex);
+        
+        Ray reflectedRay = reflect(ray, intersection.geometricNormal, intersection.point, scene.shadowRayEpsilon);
+        Intersection reflectionIntersection = intersect(scene, reflectedRay);
+        VectorFloatTriplet reflectedColor = computePixelColor(scene, reflectedRay, reflectionIntersection);
+        
+        color += F * material->mirrorReflectance * reflectedColor;
+        return color;
+    }
+    
+    if (material->type == "dielectric") {
+        VectorFloatTriplet normal = intersection.shadingNormal;
+        float n1 = 1.0f;
+        float n2 = material->refractionIndex;
+        bool entering = dotProduct(ray.direction, normal) < 0;
+        if (!entering) {
+            normal = -normal;
+            swap(n1, n2);
+        }
+        float cosTheta = dotProduct(-ray.direction, normal);
+
+        float F = fresnelDielectric(cosTheta, n1, n2);
+        
+        Ray reflectedRay = reflect(ray, normal, intersection.point, scene.shadowRayEpsilon);
+        Intersection reflectionIntersection = intersect(scene, reflectedRay);
+        VectorFloatTriplet reflectedColor = computePixelColor(scene, reflectedRay, reflectionIntersection);
+        
+        bool totalInternalReflection = false;
+        Ray refractedRay = refract(ray, normal, n1, n2, intersection.point, scene.shadowRayEpsilon, totalInternalReflection);
+
+        if (totalInternalReflection) {
+            color += material->mirrorReflectance * reflectedColor;
+        } else {
+            Intersection refractionIntersection = intersect(scene, refractedRay);
+            VectorFloatTriplet refractedColor = computePixelColor(scene, refractedRay, refractionIntersection);
+            if (entering && refractionIntersection.hit) {
+                float distance = refractionIntersection.distance;
+                VectorFloatTriplet absorbance = material->absorptionCoefficient * distance;
+                VectorFloatTriplet transmittance = VectorFloatTriplet{
+                    exp(-absorbance.x),
+                    exp(-absorbance.y),
+                    exp(-absorbance.z)
+                };
+                refractedColor = refractedColor * transmittance;
+            }
+            
+            color += F * material->mirrorReflectance * reflectedColor 
+                    + (1.0f - F) * material->mirrorReflectance * refractedColor;
+        }
+        return color;
+    }
+    
     // Ambient component
     VectorFloatTriplet ambient = material->ambientReflectance * scene.ambientLight.intensity;
     color += ambient;
@@ -339,7 +393,7 @@ VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Interse
     if (ray.depth > scene.maxRecursionDepth) {
         return VectorFloatTriplet({0, 0, 0});
     }
-    if(intersection.hit) {
+    if (intersection.hit) {
         return computeShading(scene, ray, intersection);
     } else if (ray.depth == 0) {
         return scene.backgroundColor;
@@ -359,6 +413,59 @@ bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Int
     Intersection shadowIntersection = intersect(scene, shadowRay);
     float distToLight = sqrt(dotProduct(light.position - intersection.point, light.position - intersection.point));
     return shadowIntersection.hit && shadowIntersection.distance < distToLight;
+}
+
+float fresnelConductor(float cosTheta, float n, float k) {
+    float cosThetaSq = cosTheta * cosTheta;
+    float sinThetaSq = 1.0f - cosThetaSq;
+    float sinThetaQu = sinThetaSq * sinThetaSq;
+    
+    float nSq = n * n;
+    float kSq = k * k;
+    
+    float t0 = nSq - kSq - sinThetaSq;
+    float aSqPlusBSq = sqrt(t0 * t0 + 4.0f * nSq * kSq);
+    float a = sqrt(0.5f * (aSqPlusBSq + t0));
+    
+    float Rs = ((aSqPlusBSq + cosThetaSq) - (2.0f * a * cosTheta)) / 
+               ((aSqPlusBSq + cosThetaSq) + (2.0f * a * cosTheta));
+    
+    float Rp = Rs * ((aSqPlusBSq * cosThetaSq + sinThetaQu) - (2.0f * a * cosTheta * sinThetaSq)) /
+                    ((aSqPlusBSq * cosThetaSq + sinThetaQu) + (2.0f * a * cosTheta * sinThetaSq));
+    
+    return 0.5f * (Rs + Rp);
+}
+
+float fresnelDielectric(float cosTheta, float n1, float n2) {
+    float eta = n1 / n2;
+    float sinThetaTSq = eta * eta * (1.0f - cosTheta * cosTheta);
+    
+    if (sinThetaTSq >= 1.0f) {
+        return 1.0f;
+    }
+    
+    float cosPhi = sqrt(1.0f - sinThetaTSq);
+
+    float rPerpendicular = (n1 * cosTheta - n2 * cosPhi) / (n1 * cosTheta + n2 * cosPhi);
+    float rParallel = (n2 * cosTheta - n1 * cosPhi) / (n2 * cosTheta + n1 * cosPhi);
+    
+    return 0.5f * (rPerpendicular * rPerpendicular + rParallel * rParallel);
+}
+
+Ray refract(Ray& ray, const VectorFloatTriplet normal, float n1, float n2, VectorFloatTriplet point, const float shadowRayEpsilon, bool& totalInternalReflection) {
+    float eta = n1 / n2;
+    float cosTheta = -dotProduct(ray.direction, normal);
+    float sinThetaTSq = eta * eta * (1.0f - cosTheta * cosTheta);
+    
+    totalInternalReflection = (sinThetaTSq >= 1.0f) || (cosTheta < 0);
+    
+    if (totalInternalReflection) {
+        return Ray{point, ray.direction, ray.depth, false, false, false};
+    }
+    
+    float cosPhi = sqrt(1.0f - sinThetaTSq);
+    VectorFloatTriplet w_t = (ray.direction + normal * cosTheta) * eta - normal * cosPhi;
+    return Ray{point - shadowRayEpsilon * normalize(normal), normalize(w_t), ray.depth + 1, false, false, true};
 }
 
 Ray reflect(Ray& ray, const VectorFloatTriplet normal, VectorFloatTriplet point, const float shadowRayEpsilon) {

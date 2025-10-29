@@ -194,15 +194,15 @@ I still need to implement several things which I put below in order of priority,
        - [x] I need to handle not perpendicular gaze and up vectors.
        - [x] I need to handle the lookAt camera type.
 - [x] BVH acceleration structures. Update: done.
-- [ ] Refraction
-- [ ] Different Material Types handled differently: The values can be “mirror”, “conductor”, and “dielectric”.
+- [x] Refraction
+- [x] Different Material Types handled differently: The values can be “mirror”, “conductor”, and “dielectric”.
        - [x] Mirror -> This doesn't use Fresnel reflection, basic.
-       - [ ] Conductor
-       - [ ] Dielectric
+       - [x] Conductor
+       - [?] Dielectric
 - [x] Back face culling
-- [ ] Shading modes:
+- [x] Shading modes:
        - [x] Flat
-       - [ ] Smooth
+       - [x] Smooth
 
 Update: I will implement the back-face culling and the threading with switchable options to test the performance and report my results.
 
@@ -221,3 +221,11 @@ While taking a look at the scene files I also noticed I forgot to implement smoo
 Update: Ply is done.
 Update: BVH is done.
 Update: Back face culling is done.
+
+## 2025-10-29 Night
+
+I have tried to implement the dielectric and even though I used the exact calculations from the lecture notes, I couldn't make it exactly the same as the ground truth. I am not sure what exactly is the problem. I will try to fix it in the second homework.
+
+Also I noticed my BVH is buggy. So for some scenes I am skipping some of the objects. For the chinese example for instance I just skip nearly all of them and it only looks like a scatter of points.
+
+But for bunny it works fine, whereas a simpler scene cornellbox, the meshes just disappear. Very interesting case. As I said similar to the dielectric issue, I will also handle this one as well.

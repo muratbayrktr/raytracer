@@ -28,6 +28,13 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
 /* Reflection Functions */
 Ray reflect(Ray& ray, const VectorFloatTriplet normal, VectorFloatTriplet point, const float shadowRayEpsilon);
 
+/* Fresnel Functions */
+float fresnelConductor(float cosTheta, float n, float k);
+float fresnelDielectric(float cosTheta, float n1, float n2);
+
+/* Refraction Functions */
+Ray refract(Ray& ray, const VectorFloatTriplet normal, float n1, float n2, VectorFloatTriplet point, const float shadowRayEpsilon, bool& totalInternalReflection);
+
 /* Shadow */
 bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection);
 
