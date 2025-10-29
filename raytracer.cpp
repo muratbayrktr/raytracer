@@ -4,9 +4,10 @@
 #include "utils.h"
 #include <cmath>
 #include "precompute.h"
-#include <thread>
+#include <pthread.h>
 #include <vector>
 #include <chrono>
+#include <unistd.h>
 #define OUTPUT_PATH "../my_outputs/"
 using namespace std;
 using namespace scene;
@@ -20,37 +21,68 @@ VectorFloatTriplet __compute(Scene& scene, Camera& camera, int x, int y, int wid
     return pixelColor;
 }
 
+// Thread argument structure for pthread
+struct ThreadArgs {
+    Scene* scene;
+    Camera* camera;
+    int startY;
+    int endY;
+    int width;
+    int height;
+    unsigned char* image;
+};
+
+// Thread function for pthread
+void* threadFunction(void* arg) {
+    ThreadArgs* args = (ThreadArgs*)arg;
+    Scene* scene = args->scene;
+    Camera* camera = args->camera;
+    
+    for (int y = args->startY; y < args->endY; ++y) {
+        for (int x = 0; x < args->width; ++x) {
+            VectorFloatTriplet pixelColor = __compute(*scene, *camera, x, y, args->width, args->height);
+            args->image[(y * args->width + x) * 3] = (unsigned char) round(pixelColor.x);
+            args->image[(y * args->width + x) * 3 + 1] = (unsigned char) round(pixelColor.y);
+            args->image[(y * args->width + x) * 3 + 2] = (unsigned char) round(pixelColor.z);
+        }
+    }
+    return NULL;
+}
+
 void multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image) {
     auto start = std::chrono::high_resolution_clock::now();
-    unsigned int nThreads = std::thread::hardware_concurrency();
-    if (nThreads == 0) nThreads = 4;
+
+    long nThreads = sysconf(_SC_NPROCESSORS_ONLN);
+    if (nThreads <= 0) nThreads = 4;
     std::cout << "Number of threads: " << nThreads << std::endl;
 
-    auto threadFunction = [&](int startY, int endY) {
-        for (int y = startY; y < endY; ++y) {
-            for (int x = 0; x < width; ++x) {
-                VectorFloatTriplet pixelColor = __compute(scene, camera, x, y, width, height);
-                image[(y * width + x) * 3] = (unsigned char) round(pixelColor.x);
-                image[(y * width + x) * 3 + 1] = (unsigned char) round(pixelColor.y);
-                image[(y * width + x) * 3 + 2] = (unsigned char) round(pixelColor.z);
-            }
-        }
-    };
-
-    std::vector<std::thread> threads;
+    std::vector<pthread_t> threads(nThreads);
+    std::vector<ThreadArgs> threadArgs(nThreads);
+    
     int rowsPerThread = height / nThreads;
     int extra = height % nThreads;
     int currentY = 0;
 
-    for (unsigned int t = 0; t < nThreads; ++t) {
+    for (long t = 0; t < nThreads; ++t) {
         int startY = currentY;
         int endY = startY + rowsPerThread + (t < extra ? 1 : 0);
-        threads.emplace_back(threadFunction, startY, endY);
+        
+        threadArgs[t].scene = &scene;
+        threadArgs[t].camera = &camera;
+        threadArgs[t].startY = startY;
+        threadArgs[t].endY = endY;
+        threadArgs[t].width = width;
+        threadArgs[t].height = height;
+        threadArgs[t].image = image;
+        
+        pthread_create(&threads[t], NULL, threadFunction, &threadArgs[t]);
         currentY = endY;
     }
-    for (auto& t : threads) {
-        t.join();
+
+    for (long t = 0; t < nThreads; ++t) {
+        pthread_join(threads[t], NULL);
     }
+    
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Multi-threaded ray tracing time: " << duration.count() << " milliseconds" << std::endl;
@@ -71,11 +103,36 @@ void singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int heigh
     std::cout << "Single-threaded ray tracing time: " << duration.count() << " milliseconds" << std::endl;
 }
 
+struct Args {
+    string sceneFile;
+    bool isMultiThreaded;
+    bool useBVH;
+};
+
+Args parseArgs(int argc, char* argv[]) {
+    Args args;
+    args.sceneFile = argv[1];
+    args.isMultiThreaded = true;
+    args.useBVH = true;
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "-m") == 0) {
+            args.isMultiThreaded = false;
+        }
+        if (strcmp(argv[i], "-b") == 0) {
+            args.useBVH = false;
+        }
+    }
+    return args;
+}
+
 
 int main(int argc, char* argv[])
 {
+
+    Args args = parseArgs(argc, argv);
+
     Scene scene;
-    scene.loadSceneFromFile(argv[1]);
+    scene.loadSceneFromFile(args.sceneFile);
 
     scene.getSummary();
 
