@@ -80,6 +80,7 @@ namespace scene {
     };
 
     struct Mesh : public Object {
+        char shadingMode;
         std::vector<VectorIntTriplet> faces;
     };
 
@@ -115,7 +116,7 @@ namespace scene {
 
         // Additional precomputed data
         std::vector<VectorFloatTriplet> triangleNormals;
-        std::vector<std::vector<VectorFloatTriplet>> meshNormals;
+        std::vector<std::vector<VectorFloatTriplet>> meshVertexNormals;
         std::vector<std::vector<float>> cameraTriangleDeterminant;
         std::vector<std::vector<std::vector<float>>> cameraMeshDeterminant;
 
@@ -165,11 +166,21 @@ namespace scene {
     };
 
     struct Intersection {
-        bool hit;
-        float distance;
+        bool hit = false;
+        float distance = 0.0f;
         VectorFloatTriplet point;
-        VectorFloatTriplet normal;
-        Material* material;
+        VectorFloatTriplet geometricNormal;
+        VectorFloatTriplet shadingNormal;
+        
+
+        enum class Kind { None, Plane, Sphere, Triangle, Mesh } kind = Kind::None;
+        int containerIndex = -1;
+        int faceIndex = -1;
+        
+        float beta = 0.0f;
+        float gamma = 0.0f;
+        
+        Material* material = nullptr;
     };
 
     struct Args {

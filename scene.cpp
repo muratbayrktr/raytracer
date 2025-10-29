@@ -400,7 +400,11 @@ std::vector<T> scene::Scene::parseObjects(const json& objectsData) {
 // Specialized parsing for each object type
 template<>
 void scene::Scene::parseSpecificAttributes<scene::Mesh>(scene::Mesh& object, const json& objectData) {
-    if (objectData.contains("Faces")) {
+    char shadingMode = 'f';
+    if (objectData.contains("_shadingMode") && !objectData["_shadingMode"].is_null()) {
+        object.shadingMode = tolower(objectData["_shadingMode"].get<std::string>()[0]);
+    }
+    if (objectData.contains("Faces") && !objectData["Faces"].is_null()) {
         object.faces = parseFaces(objectData["Faces"]);
     }
 }

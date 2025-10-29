@@ -137,19 +137,19 @@ int main(int argc, char* argv[])
     scene.getSummary();
 
 
-    vector<vector<VectorFloatTriplet>> meshNormals;
+    vector<vector<VectorFloatTriplet>> meshVertexNormals;
     vector<VectorFloatTriplet> triangleNormals;
     vector<vector<float>> cameraTriangleDeterminant;
     vector<vector<vector<float>>> cameraMeshDeterminant;
 
-    precomputeMeshNormals(scene.meshes, meshNormals, scene.vertices);
+    precomputeMeshNormals(scene.meshes, meshVertexNormals, scene.vertices);
     precomputeTriangleNormals(scene.triangles, triangleNormals, scene.vertices);
     precomputeCameraTriangleDeterminant(scene, cameraTriangleDeterminant);
     precomputeCameraMeshDeterminant(scene, cameraMeshDeterminant);
 
     scene.cameraTriangleDeterminant = cameraTriangleDeterminant;
     scene.cameraMeshDeterminant = cameraMeshDeterminant;
-    scene.meshNormals = meshNormals;
+    scene.meshVertexNormals = meshVertexNormals;
     scene.triangleNormals = triangleNormals;
 
     if (args.useBVH) {

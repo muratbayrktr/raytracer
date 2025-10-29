@@ -50,7 +50,8 @@ bool rayHitsPlane(
     const Plane& plane, 
     const vector<VectorFloatTriplet>& vertices, 
     float& t_min, 
-    Intersection& intersection
+    Intersection& intersection,
+    int planeIndex
 ) {
         /*
             From lecture slides:
@@ -66,7 +67,14 @@ bool rayHitsPlane(
        float t = dotProduct(a - o, n) / denom;
        if(t > 0 && t < t_min) {
         t_min = t;
-        intersection = Intersection{true, t, o + d * t, n, plane.material};
+        intersection.hit = true;
+        intersection.distance = t;
+        intersection.point = o + d * t;
+        intersection.geometricNormal = n;
+        intersection.shadingNormal = n;
+        intersection.material = plane.material;
+        intersection.kind = Intersection::Kind::Plane;
+        intersection.containerIndex = planeIndex;
         return true;
        }
        return false;
@@ -77,7 +85,8 @@ bool rayHitsSphere(
     const Sphere& sphere, 
     const vector<VectorFloatTriplet>& vertices, 
     float& t_min, 
-    Intersection& intersection
+    Intersection& intersection,
+    int sphereIndex
 ) {
     /*
         From the lecture slides:
@@ -98,7 +107,14 @@ bool rayHitsSphere(
     VectorFloatTriplet intersection_normal = normalize(intersection_point - c);
     if(t > 0 && t < t_min) {
         t_min = t;
-        intersection = Intersection{true, t, intersection_point, intersection_normal, sphere.material};
+        intersection.hit = true;
+        intersection.distance = t;
+        intersection.point = intersection_point;
+        intersection.geometricNormal = intersection_normal;
+        intersection.shadingNormal = intersection_normal;
+        intersection.material = sphere.material;
+        intersection.kind = Intersection::Kind::Sphere;
+        intersection.containerIndex = sphereIndex;
         return true;
     }
     return false;
@@ -108,24 +124,32 @@ bool rayHitsSphere(
 bool rayHitsTriangle(
     Ray& ray, 
     const VectorIntTriplet& face, 
-    const VectorFloatTriplet& triangleNormal, 
     const vector<VectorFloatTriplet>& vertices, 
-    float& t_min, Intersection& intersection, 
+    float& t_min, 
+    Intersection& intersection, 
     float intersectionTestEpsilon, 
     float determinantT, 
     Material* material,
-    bool enableBackFaceCulling
+    bool enableBackFaceCulling,
+    int containerIndex,
+    int faceIndex
 ) {
-    VectorFloatTriplet a = vertices[face.x];
-    VectorFloatTriplet b = vertices[face.y];
-    VectorFloatTriplet c = vertices[face.z];
-    float area = dotProduct(crossProduct(b - a, c - a), triangleNormal);
-    if (fabs(area) < 1e-8) return false; // degenerate triangle
-    float ax=a.x, ay=a.y, az=a.z, bx=b.x, by=b.y, bz=b.z, cx=c.x, cy=c.y, cz=c.z;
-    float ox=ray.origin.x, oy=ray.origin.y, oz=ray.origin.z, dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
-    /*
-    For the sake of simplicity, I am naming some parts of the formula i.e. e1x = bx - ax, e1y = by - ay, e1z = bz - az, etc.
-    */
+    const VectorFloatTriplet a = vertices[face.x];
+    const VectorFloatTriplet b = vertices[face.y];
+    const VectorFloatTriplet c = vertices[face.z];
+    
+    const VectorFloatTriplet e1 = b - a;
+    const VectorFloatTriplet e2 = c - a;
+    const VectorFloatTriplet geometricNormal = normalize(crossProduct(e1, e2));
+    if (enableBackFaceCulling) {
+        if (dotProduct(ray.direction, geometricNormal) > 0.0f) {
+            return false;
+        }
+    }
+    const float ax=a.x, ay=a.y, az=a.z, bx=b.x, by=b.y, bz=b.z, cx=c.x, cy=c.y, cz=c.z;
+    const float ox=ray.origin.x, oy=ray.origin.y, oz=ray.origin.z;
+    const float dx=ray.direction.x, dy=ray.direction.y, dz=ray.direction.z;
+    
     const float e1x = bx - ax, e1y = by - ay, e1z = bz - az;
     const float e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
     const float rx  = ox - ax, ry  = oy - ay, rz  = oz - az;
@@ -135,15 +159,6 @@ bool rayHitsTriangle(
         - e1y * (e2x * dz - e2z * dx)
         + e1z * (e2x * dy - e2y * dx) );
 
-    // Early quit
-    if (enableBackFaceCulling) {
-        float dotDirNormal = dotProduct(ray.direction, triangleNormal);
-        if (dotDirNormal > 0.0f) {
-            return false;
-        }
-    }
-
-    // Early quit
     if (std::fabs(determinant) < intersectionTestEpsilon) {
         return false;
     }
@@ -154,8 +169,6 @@ bool rayHitsTriangle(
         - ry * (e2x * dz - e2z * dx)
         + rz * (e2x * dy - e2y * dx) );
     float beta = determinantBeta * invDet;
-
-    // Early quit
     if (beta < 0.0f || beta > 1.0f) return false;
  
     float determinantGamma =
@@ -163,70 +176,117 @@ bool rayHitsTriangle(
         - e1y * (rx * dz - rz * dx)
         + e1z * (rx * dy - ry * dx) );
     float gamma = determinantGamma * invDet;
-
-    // Early quits
-    if (gamma < 0.0f || gamma > 1.0f) return false;
-    if (beta + gamma > 1.0f) return false; 
-
+    if (gamma < 0.0f || gamma > 1.0f || beta + gamma > 1.0f) return false;
 
     if (ray.shadowRay || ray.reflectionRay || ray.refractionRay) {
         determinantT =
             e1x * (e2y * rz - e2z * ry)
             - e1y * (e2x * rz - e2z * rx)
             + e1z * (e2x * ry - e2y * rx);
-    } // otherwise use the precomputed determinant
+    }
     float t = determinantT * invDet;
-
-     // Early quit
     if (t < intersectionTestEpsilon) return false;
 
     if(t < t_min) {
         t_min = t;
-        intersection = Intersection{true, t, a + beta * (b - a) + gamma * (c - a), triangleNormal, material};
+        intersection.hit = true;
+        intersection.distance = t;
+        intersection.point = a + beta * (b - a) + gamma * (c - a);
+        intersection.geometricNormal = geometricNormal;      // Store geometric normal
+        intersection.shadingNormal = geometricNormal;      // Default shading normal (will be updated for smooth shading)
+        intersection.beta = beta;
+        intersection.gamma = gamma;
+        intersection.material = material;
+        intersection.containerIndex = containerIndex;
+        intersection.faceIndex = faceIndex;
         return true;
     }
  
-     return false;
+    return false;
 }
 
 bool rayHitsMesh(
     Ray& ray, 
     const Mesh& mesh, 
-    const vector<VectorFloatTriplet>& normals, 
     const vector<VectorFloatTriplet>& vertices, 
     const vector<float>& determinants, 
     float& t_min, 
     Intersection& intersection,
     float intersectionTestEpsilon,
     scene::MeshBVH* bvh,
-    bool enableBackFaceCulling
+    bool enableBackFaceCulling,
+    int meshIndex
 ) {
     if (bvh != nullptr) {
-        return bvh->traverse(ray, mesh, normals, vertices, determinants, t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling);
+        return bvh->traverse(ray, mesh, vertices, determinants, t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex);
     }
     bool hit = false;
-    for(int i = 0; i < mesh.faces.size(); i++) {
-        hit = rayHitsTriangle(ray, mesh.faces[i], normals[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material, enableBackFaceCulling) || hit;
+    for(int i = 0; i < (int)mesh.faces.size(); i++) {
+        if (rayHitsTriangle(ray, mesh.faces[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], mesh.material, enableBackFaceCulling, meshIndex, i)) {
+            hit = true;
+            intersection.kind = Intersection::Kind::Mesh;
+        }
     }
     return hit;
 }
 
 Intersection intersect(const Scene& scene, Ray& ray) {
     float t_min = numeric_limits<float>::max();
-    Intersection intersection = Intersection{false, 0, VectorFloatTriplet{0, 0, 0}, VectorFloatTriplet{0, 0, 0}, nullptr};
+    Intersection intersection;
     bool hit = false;
-    for(int i = 0; i < scene.planes.size(); i++) {
-        hit = rayHitsPlane(ray, scene.planes[i], scene.vertices, t_min, intersection) || hit;
+    
+    // Test all geometry
+    for(int i = 0; i < (int)scene.planes.size(); i++) {
+        hit = rayHitsPlane(ray, scene.planes[i], scene.vertices, t_min, intersection, i) || hit;
     }
-    for(int i = 0; i < scene.spheres.size(); i++) {
-        hit = rayHitsSphere(ray, scene.spheres[i], scene.vertices, t_min, intersection) || hit;
+    for(int i = 0; i < (int)scene.spheres.size(); i++) {
+        hit = rayHitsSphere(ray, scene.spheres[i], scene.vertices, t_min, intersection, i) || hit;
     }
-    for(int i = 0; i < scene.triangles.size(); i++) {
-        hit = rayHitsTriangle(ray, scene.triangles[i].indices, scene.triangleNormals[i], scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, scene.cameraTriangleDeterminant[scene.currentCameraIndex][i], scene.triangles[i].material, scene.enableBackFaceCulling) || hit;
+    for(int i = 0; i < (int)scene.triangles.size(); i++) {
+        if (rayHitsTriangle(ray, scene.triangles[i].indices, scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, scene.cameraTriangleDeterminant[scene.currentCameraIndex][i], scene.triangles[i].material, scene.enableBackFaceCulling, -1, i)) {
+            hit = true;
+            intersection.kind = Intersection::Kind::Triangle;
+        }
     }
-    for(int i = 0; i < scene.meshes.size(); i++) {
+    for(int i = 0; i < (int)scene.meshes.size(); i++) {
         MeshBVH* bvh = (i < scene.meshBVHs.size()) ? scene.meshBVHs[i] : nullptr;
-        hit = rayHitsMesh(ray, scene.meshes[i], scene.meshNormals[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon, bvh, scene.enableBackFaceCulling) || hit;
+        hit = rayHitsMesh(ray, scene.meshes[i], scene.vertices, scene.cameraMeshDeterminant[scene.currentCameraIndex][i], t_min, intersection, scene.intersectionTestEpsilon, bvh, scene.enableBackFaceCulling, i) || hit;
+    }
+    
+    if (!hit) return intersection;
+    const float u = intersection.beta;
+    const float v = intersection.gamma;
+    const float w = 1.0f - u - v;
+
+    intersection.geometricNormal = normalize(intersection.geometricNormal);
+    intersection.shadingNormal = intersection.geometricNormal;
+    
+    if (intersection.kind == Intersection::Kind::Mesh) {
+        const int meshIdx = intersection.containerIndex;
+        
+        if (meshIdx >= 0 && meshIdx < (int)scene.meshes.size()) {
+            const Mesh& mesh = scene.meshes[meshIdx];
+            
+            if (mesh.shadingMode == 's' && 
+                meshIdx < (int)scene.meshVertexNormals.size() &&
+                intersection.faceIndex >= 0 && 
+                intersection.faceIndex < (int)mesh.faces.size()) {
+                
+                const auto& face = mesh.faces[intersection.faceIndex];
+                if (face.x < (int)scene.meshVertexNormals[meshIdx].size() &&
+                    face.y < (int)scene.meshVertexNormals[meshIdx].size() &&
+                    face.z < (int)scene.meshVertexNormals[meshIdx].size()) {
+                    
+                    const auto& n0 = scene.meshVertexNormals[meshIdx][face.x];
+                    const auto& n1 = scene.meshVertexNormals[meshIdx][face.y];
+                    const auto& n2 = scene.meshVertexNormals[meshIdx][face.z];
+                    intersection.shadingNormal = normalize(w * n0 + u * n1 + v * n2);
+                    if (dotProduct(intersection.shadingNormal, intersection.geometricNormal) < 0.0f) {
+                        intersection.shadingNormal = -intersection.shadingNormal;
+                    }
+                }
+            }
+        }
     }
     return intersection;
 }
@@ -239,10 +299,9 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
     VectorFloatTriplet ambient = material->ambientReflectance * scene.ambientLight.intensity;
     color += ambient;
 
-    // Mirror check
     if (material->isMirror) {
         VectorFloatTriplet mirrorColor;
-        Ray reflectedRay = reflect(ray, intersection.normal, intersection.point, scene.shadowRayEpsilon);
+        Ray reflectedRay = reflect(ray, intersection.geometricNormal, intersection.point, scene.shadowRayEpsilon);
         Intersection reflectionIntersection = intersect(scene, reflectedRay);
         color +=  material->mirrorReflectance * (mirrorColor = computePixelColor(scene, reflectedRay, reflectionIntersection));
     }
@@ -253,7 +312,8 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
             VectorFloatTriplet lightVec = light.position - intersection.point;
             float distance = sqrt(dotProduct(lightVec, lightVec));
             VectorFloatTriplet lightDir = normalize(lightVec);
-            VectorFloatTriplet normal = normalize(intersection.normal);
+            
+            VectorFloatTriplet normal = intersection.shadingNormal;
             
             // Distance attenuation (1/r^2)
             float attenuation = 1.0f / (distance * distance);
@@ -289,7 +349,7 @@ VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Interse
 
 bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection) {
     Ray shadowRay = Ray{
-        intersection.point + scene.shadowRayEpsilon * normalize(intersection.normal),
+        intersection.point + scene.shadowRayEpsilon * intersection.geometricNormal,
         normalize(light.position - intersection.point),
         0,
         true, // shadow ray
@@ -297,7 +357,8 @@ bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Int
         false // refraction ray
     };
     Intersection shadowIntersection = intersect(scene, shadowRay);
-    return shadowIntersection.hit && shadowIntersection.distance < sqrt(dotProduct(light.position - intersection.point, light.position - intersection.point));
+    float distToLight = sqrt(dotProduct(light.position - intersection.point, light.position - intersection.point));
+    return shadowIntersection.hit && shadowIntersection.distance < distToLight;
 }
 
 Ray reflect(Ray& ray, const VectorFloatTriplet normal, VectorFloatTriplet point, const float shadowRayEpsilon) {

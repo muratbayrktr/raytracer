@@ -68,13 +68,13 @@ namespace scene {
         bool traverse(
             Ray& ray,
             const Mesh& mesh,
-            const std::vector<VectorFloatTriplet>& normals,
             const std::vector<VectorFloatTriplet>& vertices,
             const std::vector<float>& determinants,
             float& t_min,
             Intersection& intersection,
             float intersectionTestEpsilon,
-            bool enableBackFaceCulling = true
+            bool enableBackFaceCulling,
+            int meshIndex
         ) const;
         
     private:

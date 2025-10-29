@@ -208,13 +208,13 @@ int MeshBVH::buildRecursive(
 bool MeshBVH::traverse(
     Ray& ray,
     const Mesh& mesh,
-    const std::vector<VectorFloatTriplet>& normals,
     const std::vector<VectorFloatTriplet>& vertices,
     const std::vector<float>& determinants,
     float& t_min,
     Intersection& intersection,
     float intersectionTestEpsilon,
-    bool enableBackFaceCulling
+    bool enableBackFaceCulling,
+    int meshIndex
 ) const {
     if (nodes.empty()) {
         return false;
@@ -222,7 +222,7 @@ bool MeshBVH::traverse(
     
     bool hit = false;
     
-    const int MAX_STACK_SIZE = 64;
+    const int MAX_STACK_SIZE = 128;
     int stack[MAX_STACK_SIZE];
     int stackPtr = 0;
     
@@ -243,20 +243,22 @@ bool MeshBVH::traverse(
                 if (rayHitsTriangle(
                     ray,
                     mesh.faces[faceIdx],
-                    normals[faceIdx],
                     vertices,
                     t_min,
                     intersection,
                     intersectionTestEpsilon,
                     determinants[faceIdx],
                     mesh.material,
-                    enableBackFaceCulling
+                    enableBackFaceCulling,
+                    meshIndex,
+                    faceIdx
                 )) {
                     hit = true;
+                    intersection.kind = Intersection::Kind::Mesh;
                 }
             }
         } else {
-            if (stackPtr < MAX_STACK_SIZE - 2) {
+            if (stackPtr + 2 <= MAX_STACK_SIZE) {
                 stack[stackPtr++] = node.rightChild;
                 stack[stackPtr++] = node.leftChild;
             }

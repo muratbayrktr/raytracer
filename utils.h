@@ -14,10 +14,10 @@ Ray castRay(const Camera& camera, int x, int y, int width, int height);
 /* Intersection Functions */
 Intersection intersect(const Scene& scene, Ray& ray); 
 
-bool rayHitsPlane(Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection);
-bool rayHitsSphere(Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection);
-bool rayHitsTriangle(Ray& ray, const VectorIntTriplet& face, const VectorFloatTriplet& triangleNormal, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, float intersectionTestEpsilon, float determinantT, Material* material, bool enableBackFaceCulling = true);
-bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& normals, const vector<VectorFloatTriplet>& vertices, const vector<float>& determinants, float& t_min, Intersection& intersection, float intersectionTestEpsilon, scene::MeshBVH* bvh = nullptr, bool enableBackFaceCulling = true);
+bool rayHitsPlane(Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, int planeIndex);
+bool rayHitsSphere(Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, int sphereIndex);
+bool rayHitsTriangle(Ray& ray, const VectorIntTriplet& face, const vector<VectorFloatTriplet>& vertices, float& t_min, Intersection& intersection, float intersectionTestEpsilon, float determinantT, Material* material, bool enableBackFaceCulling, int containerIndex, int faceIndex);
+bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& vertices, const vector<float>& determinants, float& t_min, Intersection& intersection, float intersectionTestEpsilon, scene::MeshBVH* bvh, bool enableBackFaceCulling, int meshIndex);
 
 /* Pixel Color Functions */
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection);
