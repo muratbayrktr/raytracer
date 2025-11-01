@@ -143,12 +143,6 @@ And I had camera issues too. Some scenes were rendering from completely wrong an
 | --- | --- |
 | ![ScienceTree broken](./images/broken_examples/scienceTree_view_broken.png) | ![ScienceTree](./images/scienceTree.png) |
 
-I also had another sphere bug where I forgot the `t1`/`t2` logic and was taking the wrong intersection. That looked weird:
-
-| Forgot t1/t2 logic | Correct result |
-| --- | --- |
-| ![Spheres plane bug](./images/broken_examples/spheres_with_plane_forgot_t1_t2_comparison.png) | ![Spheres plane](./images/spheres_with_plane.png) |
-
 ## Shadows and Reflections
 
 Shadow rays were actually straightforward once I had the intersection logic working. I just used the `intersect()` function to check if there's anything blocking the path from the hit point to the light. I updated the `Ray` struct to include a shadow ray flag, and used it inside `rayHitsTriangle` to decide whether to calculate the determinant on the fly or not.
