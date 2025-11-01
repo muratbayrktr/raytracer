@@ -32,7 +32,7 @@ One early gotcha: I misunderstood how faces and vertices work. Vertex data is a 
 
 As my `scene.cpp` grew, I split things up into `utils.h`, `overloads.h`, and `precompute.h`. I'm glad I did that early because operator overloading for vectors saved me a ton of lines later. Just basic stuff — addition, subtraction, multiplication, cross product, dot product, normalization — but it made all the intersection math way cleaner.
 
-```
+```cpp
 // Vector overloads are blessing for me because I could do below in one line
 // wr = -wo + 2n(n.wo)
 VectorFloatTriplet wr = ray.direction - 2 * dotProduct(ray.direction, normal) * normal; // reflection formula
