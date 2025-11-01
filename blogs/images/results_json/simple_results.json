@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 0.0,
+    "renderTimeMs": 48.0,
+    "sceneName": "simple.png",
+    "totalTimeMs": 48.0,
+    "useBVH": false
+}

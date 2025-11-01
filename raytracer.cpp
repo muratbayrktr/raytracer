@@ -8,7 +8,8 @@
 #include <vector>
 #include <chrono>
 #include <unistd.h>
-#define OUTPUT_PATH "./"
+#include <fstream>
+#define OUTPUT_PATH "../my_outputs_hw1/"
 using namespace std;
 using namespace scene;
 
@@ -49,11 +50,11 @@ void* threadFunction(void* arg) {
     return NULL;
 }
 
-void multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image) {
+float multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image) {
     auto start = std::chrono::high_resolution_clock::now();
 
     long nThreads = sysconf(_SC_NPROCESSORS_ONLN);
-    if (nThreads <= 0) nThreads = 4;
+    if (nThreads <= 0 || nThreads > 4) nThreads = 4;
     std::cout << "Number of threads: " << nThreads << std::endl;
 
     std::vector<pthread_t> threads(nThreads);
@@ -86,9 +87,10 @@ void multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int height
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Multi-threaded ray tracing time: " << duration.count() << " milliseconds" << std::endl;
+    return duration.count();
 }
 
-void singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image) {
+float singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image) {
     auto start = std::chrono::high_resolution_clock::now();
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
@@ -101,24 +103,43 @@ void singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int heigh
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     std::cout << "Single-threaded ray tracing time: " << duration.count() << " milliseconds" << std::endl;
+    return duration.count();
 }
 
 scene::Args parseArgs(int argc, char* argv[]) {
     scene::Args args;
     args.sceneFile = argv[1];
     args.isMultiThreaded = true;
-    args.useBVH = true;
+    args.useBVH = false;
     args.enableBackFaceCulling = true;
-    
-    for (int i = 0; i < argc; i++) {
+
+    for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-m") == 0) {
-            args.isMultiThreaded = false;
+            // Accept either -m 0/1 or just -m (legacy set to false)
+            if (i + 1 < argc && (strcmp(argv[i + 1], "0") == 0 || strcmp(argv[i + 1], "1") == 0)) {
+                args.isMultiThreaded = (atoi(argv[i + 1]) != 0);
+                i++;
+            } else {
+                args.isMultiThreaded = false;
+            }
         }
-        if (strcmp(argv[i], "-b") == 0) {
-            args.useBVH = false;
+        else if (strcmp(argv[i], "-b") == 0) {
+            // Accept either -b 0/1 or just -b (legacy set to true)
+            if (i + 1 < argc && (strcmp(argv[i + 1], "0") == 0 || strcmp(argv[i + 1], "1") == 0)) {
+                args.useBVH = (atoi(argv[i + 1]) != 0);
+                i++;
+            } else {
+                args.useBVH = true;
+            }
         }
-        if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--no-cull") == 0) {
-            args.enableBackFaceCulling = false;
+        else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--no-cull") == 0) {
+            // Accept either -c 0/1 or just -c (legacy set to false)
+            if (i + 1 < argc && (strcmp(argv[i + 1], "0") == 0 || strcmp(argv[i + 1], "1") == 0)) {
+                args.enableBackFaceCulling = (atoi(argv[i + 1]) != 0);
+                i++;
+            } else {
+                args.enableBackFaceCulling = false;
+            }
         }
     }
     return args;
@@ -142,6 +163,8 @@ int main(int argc, char* argv[])
     vector<vector<float>> cameraTriangleDeterminant;
     vector<vector<vector<float>>> cameraMeshDeterminant;
 
+    auto preprocessingStart = std::chrono::high_resolution_clock::now();
+
     precomputeMeshNormals(scene.meshes, meshVertexNormals, scene.vertices);
     precomputeTriangleNormals(scene.triangles, triangleNormals, scene.vertices);
     precomputeCameraTriangleDeterminant(scene, cameraTriangleDeterminant);
@@ -155,7 +178,11 @@ int main(int argc, char* argv[])
     if (args.useBVH) {
         scene.buildBVH();
     }
-
+    auto preprocessingEnd = std::chrono::high_resolution_clock::now();
+    auto preprocessingTime = std::chrono::duration_cast<std::chrono::milliseconds>(preprocessingEnd - preprocessingStart);
+    float preprocessingTimeMs = preprocessingTime.count();
+    float totalTimeMs = preprocessingTimeMs;
+    float renderTimeMs = 0;
     for (int i = 0; i < scene.cameras.size(); i++) {
         Camera camera = scene.cameras[i];
         scene.currentCameraIndex = i;
@@ -163,14 +190,31 @@ int main(int argc, char* argv[])
         int height = camera.imageResolution.y;
         unsigned char* image = new unsigned char[width * height * 3];
         if (args.isMultiThreaded) {
-            multiThreadedRayTracing(scene, camera, width, height, image);
+            renderTimeMs = multiThreadedRayTracing(scene, camera, width, height, image);
+            totalTimeMs += renderTimeMs;
         } else {
-            singleThreadedRayTracing(scene, camera, width, height, image);
+            renderTimeMs = singleThreadedRayTracing(scene, camera, width, height, image);
+            totalTimeMs += renderTimeMs;
         }
         string outputName = camera.imageName;
         scene.writePPM((OUTPUT_PATH + outputName).c_str(), image, width, height);
         delete[] image;
+
+        json results = {
+            {"sceneName", outputName},
+            {"preprocessingTimeMs", preprocessingTimeMs},
+            {"renderTimeMs", renderTimeMs},
+            {"totalTimeMs", totalTimeMs},
+            {"useBVH", args.useBVH},
+            {"isMultiThreaded", args.isMultiThreaded},
+            {"enableBackFaceCulling", args.enableBackFaceCulling}
+        };
+    
+        // output to scene name file_results.json
+        std::ofstream resultsFile((OUTPUT_PATH + outputName.substr(0, outputName.find_last_of('.')) + "_results.json").c_str());
+        resultsFile << results.dump(4);
+        resultsFile.close();
     }
+
     return 0;
 }
- 

@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 155.0,
+    "renderTimeMs": 247.0,
+    "sceneName": "../inputs/raven/rt_utahteapot_mug_ceng.json",
+    "totalTimeMs": 402.0,
+    "useBVH": true
+}

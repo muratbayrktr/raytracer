@@ -506,13 +506,13 @@ void scene::Scene::getSummary() {
 
 void scene::Scene::writePPM(const std::string& filename, unsigned char* image, int width, int height) {
     // @TODO: Remove following lines to write png file, I did this for debugging
-    // size_t dotPos = filename.find_last_of('.');
-    // std::string ppmFilename;
-    // if (dotPos != std::string::npos) {
-    //     ppmFilename = filename.substr(0, dotPos) + ".ppm";
-    // }
+    size_t dotPos = filename.find_last_of('.');
+    std::string ppmFilename;
+    if (dotPos != std::string::npos) {
+        ppmFilename = filename.substr(0, dotPos) + ".ppm";
+    }
     FILE *outfile;
-    if ((outfile = fopen(filename.c_str(), "w")) == NULL) {
+    if ((outfile = fopen(ppmFilename.c_str(), "w")) == NULL) {
         throw std::runtime_error("Error: The ppm file cannot be opened for writing: " + filename);
     }
     fprintf(outfile, "P3\n%d %d\n255\n", width, height);

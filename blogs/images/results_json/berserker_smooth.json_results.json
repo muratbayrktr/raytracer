@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 9.0,
+    "renderTimeMs": 189.0,
+    "sceneName": "../inputs/akif_uslu/berserker_smooth.json",
+    "totalTimeMs": 198.0,
+    "useBVH": true
+}

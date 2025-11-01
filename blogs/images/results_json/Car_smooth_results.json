@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 0.0,
+    "renderTimeMs": 95361.0,
+    "sceneName": "Car_smooth.png",
+    "totalTimeMs": 95361.0,
+    "useBVH": false
+}

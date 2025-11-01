@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 550.0,
+    "renderTimeMs": 266.0,
+    "sceneName": "../inputs/raven/rt_david.json",
+    "totalTimeMs": 816.0,
+    "useBVH": true
+}

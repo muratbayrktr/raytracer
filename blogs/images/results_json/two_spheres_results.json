@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 0.0,
+    "renderTimeMs": 20.0,
+    "sceneName": "two_spheres.png",
+    "totalTimeMs": 20.0,
+    "useBVH": false
+}

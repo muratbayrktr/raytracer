@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 0.0,
+    "renderTimeMs": 31873.0,
+    "sceneName": "scienceTree.png",
+    "totalTimeMs": 31873.0,
+    "useBVH": false
+}

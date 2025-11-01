@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 18.0,
+    "renderTimeMs": 34.0,
+    "sceneName": "bunny.png",
+    "totalTimeMs": 52.0,
+    "useBVH": true
+}

@@ -5,7 +5,6 @@ raytracer
 *.ppm
 
 # Inputs
-*.json
 
 # Logs
 *.log
@@ -13,6 +12,4 @@ raytracer
 # Error logs
 *.err
 
-# PNGs
-*.png
-*.PNG
+.DS_Store

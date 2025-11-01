@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 19.0,
+    "renderTimeMs": 221.0,
+    "sceneName": "bunny_with_plane.png",
+    "totalTimeMs": 240.0,
+    "useBVH": true
+}

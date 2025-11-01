@@ -1,0 +1,9 @@
+{
+    "enableBackFaceCulling": true,
+    "isMultiThreaded": true,
+    "preprocessingTimeMs": 11.0,
+    "renderTimeMs": 630.0,
+    "sceneName": "low_poly_scene_smooth.png",
+    "totalTimeMs": 641.0,
+    "useBVH": true
+}
