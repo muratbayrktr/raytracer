@@ -70,8 +70,6 @@ I also cleaned up the sphere intersection code to just take `min(t1, t2)` instea
 
 Eventually the spheres with plane scene started rendering correctly with proper lighting and specular highlights. Pretty happy with that.
 
-![Spheres with plane](./images/spheres_with_plane.png)
-
 ## Shading: When Everything Went Dark
 
 Okay so this was the big one. I implemented `computeShading` with ambient, diffuse, and specular components. But when I rendered scenes, I was only getting the ambient color. Everything looked super dark and flat.
