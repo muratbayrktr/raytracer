@@ -47,7 +47,7 @@ Around October 24th, I finally got around to implementing `castRay`. I followed 
 
 Nothing fancy, but it worked. I added `Ray` and `Intersection` structs to `scene.h` to keep track of rays and where they hit stuff.
 
-## The Sign Error That Cost Me Hours
+## The Sign Error
 
 October 26th was when I got sphere and plane intersections working. The math was straightforward from the lecture slides, but here's the fun part: I spent way too long debugging why my spheres looked weird. Turns out I had a sign error in the discriminant calculation.
 
@@ -64,8 +64,9 @@ D = (d·(o-c))² - (d·d)·((o-c)·(o-c) + r²)
 Just a minus instead of a plus. lol.
 
 I also cleaned up the sphere intersection code to just take `min(t1, t2)` instead of checking both intersections separately. Because I wasn't doing that initially, I wasted a couple hours debugging why my spheres looked creepy.
-
-![Two spheres](./images/two_spheres.png)
+| Forgot t1/t2 logic | Correct result |
+| --- | --- |
+| ![Spheres with plane bug](./images/broken_examples/spheres_with_plane_forgot_t1_t2_comparison.png) | ![Spheres with plane](./images/spheres_with_plane.png) |
 
 Eventually the spheres with plane scene started rendering correctly with proper lighting and specular highlights. Pretty happy with that.
 
