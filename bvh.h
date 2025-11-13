@@ -50,8 +50,9 @@ namespace scene {
         int rightChild;
         int firstFace;
         int faceCount;
+        int splitAxis;  // 0=x, 1=y, 2=z - used for near/far traversal optimization
         
-        BVHNode() : leftChild(-1), rightChild(-1), firstFace(0), faceCount(0) {}
+        BVHNode() : leftChild(-1), rightChild(-1), firstFace(0), faceCount(0), splitAxis(0) {}
         
         bool isLeaf() const { return leftChild == -1; }
     };
@@ -97,6 +98,10 @@ namespace scene {
             const VectorIntTriplet& face,
             const std::vector<VectorFloatTriplet>& vertices
         ) const;
+
+        static constexpr int MAX_FACES_PER_LEAF = 4;
+        static constexpr int MAX_BUILD_DEPTH = 64;
+        std::vector<VectorFloatTriplet> faceCentroids;
     };
 }
 #endif

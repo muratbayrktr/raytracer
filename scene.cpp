@@ -563,23 +563,19 @@ void scene::Scene::buildBVH() {
     verbose("Building BVH acceleration structures...");
     verbose("================================================");
     std::chrono::time_point<std::chrono::high_resolution_clock> start = std::chrono::high_resolution_clock::now();
-    for (auto bvh : meshBVHs) {
-        delete bvh;
-    }
-    meshBVHs.clear();
-    
-    meshBVHs.resize(meshes.size());
+    std::vector<MeshBVH*> newMeshBVHs(meshes.size());
     for (size_t i = 0; i < meshes.size(); i++) {
         if (meshes[i].faces.size() > 0) {
             verbose("[BVH] Building BVH for mesh " + std::to_string(i) + " (" + 
                    std::to_string(meshes[i].faces.size()) + " faces)...");
             
-            meshBVHs[i] = new scene::MeshBVH();
-            meshBVHs[i]->build(meshes[i], vertices);
+            newMeshBVHs[i] = new scene::MeshBVH();
+            newMeshBVHs[i]->build(meshes[i], vertices);
         } else {
-            meshBVHs[i] = nullptr;
+            newMeshBVHs[i] = nullptr;
         }
     }
+    this->meshBVHs = std::move(newMeshBVHs);
     std::chrono::time_point<std::chrono::high_resolution_clock> end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
     verbose("================================================");

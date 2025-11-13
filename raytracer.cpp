@@ -9,7 +9,7 @@
 #include <chrono>
 #include <unistd.h>
 #include <fstream>
-#define OUTPUT_PATH "../my_outputs_hw1/"
+#define OUTPUT_PATH "../my_outputs/"
 using namespace std;
 using namespace scene;
 
