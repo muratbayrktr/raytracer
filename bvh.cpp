@@ -10,7 +10,7 @@ namespace scene {
 
 namespace {
 
-inline float getAxisValue(const VectorFloatTriplet& v, int axis) {
+inline double getAxisValue(const VectorFloatTriplet& v, int axis) {
     switch (axis) {
         case 0: return v.x;
         case 1: return v.y;
@@ -20,18 +20,18 @@ inline float getAxisValue(const VectorFloatTriplet& v, int axis) {
 
 } // anonymous namespace
 
-bool AABB::intersect(const Ray& ray, float t_min, float t_max) const {
-    float t0 = t_min;
-    float t1 = t_max;
+bool AABB::intersect(const Ray& ray, double t_min, double t_max) const {
+    double t0 = t_min;
+    double t1 = t_max;
 
     const VectorFloatTriplet& origin = ray.origin;
     const VectorFloatTriplet& direction = ray.direction;
 
     for (int axis = 0; axis < 3; ++axis) {
-        const float dirComponent = getAxisValue(direction, axis);
-        const float originComponent = getAxisValue(origin, axis);
-        const float slabMin = getAxisValue(min, axis);
-        const float slabMax = getAxisValue(max, axis);
+        const double dirComponent = getAxisValue(direction, axis);
+        const double originComponent = getAxisValue(origin, axis);
+        const double slabMin = getAxisValue(min, axis);
+        const double slabMax = getAxisValue(max, axis);
 
         if (std::fabs(dirComponent) < 1e-9f) {
             if (originComponent < slabMin || originComponent > slabMax) {
@@ -40,9 +40,9 @@ bool AABB::intersect(const Ray& ray, float t_min, float t_max) const {
             continue;
         }
 
-        float invD = 1.0f / dirComponent;
-        float tNear = (slabMin - originComponent) * invD;
-        float tFar = (slabMax - originComponent) * invD;
+        double invD = 1.0 / dirComponent;
+        double tNear = (slabMin - originComponent) * invD;
+        double tFar = (slabMax - originComponent) * invD;
         if (tNear > tFar) std::swap(tNear, tFar);
 
         t0 = std::max(t0, tNear);
@@ -53,6 +53,28 @@ bool AABB::intersect(const Ray& ray, float t_min, float t_max) const {
     }
 
     return t1 >= t0;
+}
+
+AABB AABB::transform(const Matrix4x4& mat) const {
+    // Transform all 8 corners of the bounding box
+    VectorFloatTriplet corners[8] = {
+        {min.x, min.y, min.z},
+        {min.x, min.y, max.z},
+        {min.x, max.y, min.z},
+        {min.x, max.y, max.z},
+        {max.x, min.y, min.z},
+        {max.x, min.y, max.z},
+        {max.x, max.y, min.z},
+        {max.x, max.y, max.z}
+    };
+    
+    AABB result;
+    for (int i = 0; i < 8; i++) {
+        VectorFloatTriplet transformed = transformPoint(mat, corners[i]);
+        result.expand(transformed);
+    }
+    
+    return result;
 }
 
 void MeshBVH::build(const Mesh& mesh, const std::vector<VectorFloatTriplet>& vertices) {
@@ -83,49 +105,31 @@ bool MeshBVH::traverse(
     Ray& ray,
     const Mesh& mesh,
     const std::vector<VectorFloatTriplet>& vertices,
-    const std::vector<float>& determinants,
-    float& t_min,
+    const std::vector<double>& determinants,
+    double& t_min,
     Intersection& intersection,
-    float intersectionTestEpsilon,
+    double intersectionTestEpsilon,
     bool enableBackFaceCulling,
-    int meshIndex
+    int meshIndex,
+    Material* materialOverride
 ) const {
     if (nodes.empty()) {
         return false;
     }
+    
+    // Use material override if provided (for instances), otherwise use mesh's material
+    Material* materialToUse = materialOverride ? materialOverride : mesh.material;
 
     bool hit = false;
-    std::vector<int> stack;
-    stack.reserve(64);
-    stack.push_back(0);
+    int stack[64];
+    int stackSize = 0;
+    stack[stackSize++] = 0;
 
-    auto computeDeterminantT = [&](const VectorIntTriplet& face) -> float {
-        const VectorFloatTriplet& a = vertices[face.x];
-        const VectorFloatTriplet& b = vertices[face.y];
-        const VectorFloatTriplet& c = vertices[face.z];
-        const VectorFloatTriplet& o = ray.origin;
-
-        const float e1x = b.x - a.x;
-        const float e1y = b.y - a.y;
-        const float e1z = b.z - a.z;
-        const float e2x = c.x - a.x;
-        const float e2y = c.y - a.y;
-        const float e2z = c.z - a.z;
-        const float rx = o.x - a.x;
-        const float ry = o.y - a.y;
-        const float rz = o.z - a.z;
-
-        return e1x * (e2y * rz - e2z * ry)
-             - e1y * (e2x * rz - e2z * rx)
-             + e1z * (e2x * ry - e2y * rx);
-    };
-
-    while (!stack.empty()) {
-        int nodeIndex = stack.back();
-        stack.pop_back();
+    while (stackSize > 0) {
+        int nodeIndex = stack[--stackSize];
 
         const BVHNode& node = nodes[nodeIndex];
-        if (!node.bounds.intersect(ray, 0.0f, t_min)) {
+        if (!node.bounds.intersect(ray, 0.0, t_min)) {
             continue;
         }
 
@@ -137,11 +141,9 @@ bool MeshBVH::traverse(
                 }
 
                 const VectorIntTriplet& face = mesh.faces[faceIndex];
-                float determinantT = 0.0f;
-                if (faceIndex < static_cast<int>(determinants.size())) {
+                double determinantT = 0.0;
+                if (faceIndex < static_cast<int>(determinants.size()) && determinants[faceIndex] != 0.0) {
                     determinantT = determinants[faceIndex];
-                } else {
-                    determinantT = computeDeterminantT(face);
                 }
 
                 if (rayHitsTriangle(
@@ -152,7 +154,7 @@ bool MeshBVH::traverse(
                         intersection,
                         intersectionTestEpsilon,
                         determinantT,
-                        mesh.material,
+                        materialToUse,
                         enableBackFaceCulling,
                         meshIndex,
                         faceIndex)) {
@@ -168,13 +170,13 @@ bool MeshBVH::traverse(
                 continue;
             }
 
-            const float dirComponent = getAxisValue(ray.direction, node.splitAxis);
-            if (dirComponent >= 0.0f) {
-                stack.push_back(rightChild);
-                stack.push_back(leftChild);
+            const double dirComponent = getAxisValue(ray.direction, node.splitAxis);
+            if (dirComponent >= 0.0) {
+                stack[stackSize++] = rightChild;
+                stack[stackSize++] = leftChild;
             } else {
-                stack.push_back(leftChild);
-                stack.push_back(rightChild);
+                stack[stackSize++] = leftChild;
+                stack[stackSize++] = rightChild;
             }
         }
     }
@@ -222,7 +224,7 @@ int MeshBVH::buildRecursive(
     };
 
     int splitAxis = 0;
-    float maxExtent = extent.x;
+    double maxExtent = extent.x;
     if (extent.y > maxExtent) {
         splitAxis = 1;
         maxExtent = extent.y;
@@ -283,13 +285,23 @@ VectorFloatTriplet MeshBVH::computeFaceCentroid(
     const VectorFloatTriplet& v0 = vertices[face.x];
     const VectorFloatTriplet& v1 = vertices[face.y];
     const VectorFloatTriplet& v2 = vertices[face.z];
-    const float inv3 = 1.0f / 3.0f;
+    const double inv3 = 1.0 / 3.0;
 
     return VectorFloatTriplet{
         (v0.x + v1.x + v2.x) * inv3,
         (v0.y + v1.y + v2.y) * inv3,
         (v0.z + v1.z + v2.z) * inv3
     };
+}
+
+AABB computeMeshAABB(const Mesh& mesh, const std::vector<VectorFloatTriplet>& vertices) {
+    AABB bounds;
+    for (const auto& face : mesh.faces) {
+        bounds.expand(vertices[face.x]);
+        bounds.expand(vertices[face.y]);
+        bounds.expand(vertices[face.z]);
+    }
+    return bounds;
 }
 
 } // namespace scene

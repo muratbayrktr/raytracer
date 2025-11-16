@@ -10,7 +10,7 @@ using namespace scene;
 /* Operator Overloads */
 /* VectorFloatTriplet */
 VectorFloatTriplet crossProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
-float dotProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
+double dotProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
 VectorFloatTriplet normalize(const VectorFloatTriplet& a);
 VectorFloatTriplet operator-(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
 VectorFloatTriplet operator+(const VectorFloatTriplet& a, const VectorFloatTriplet& b);
@@ -20,8 +20,8 @@ VectorFloatTriplet& operator-=(VectorFloatTriplet& a, const VectorFloatTriplet& 
 VectorFloatTriplet& operator*=(VectorFloatTriplet& a, const VectorFloatTriplet& b);
 VectorFloatTriplet& operator/=(VectorFloatTriplet& a, const VectorFloatTriplet& b);
 VectorFloatTriplet operator-(const VectorFloatTriplet& a);
-VectorFloatTriplet operator*(const VectorFloatTriplet& a, const float& b);
-VectorFloatTriplet operator*(const float& a, const VectorFloatTriplet& b);
+VectorFloatTriplet operator*(const VectorFloatTriplet& a, const double& b);
+VectorFloatTriplet operator*(const double& a, const VectorFloatTriplet& b);
 
 /* VectorIntTriplet */
 VectorIntTriplet crossProduct(const VectorIntTriplet& a, const VectorIntTriplet& b);

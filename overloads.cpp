@@ -11,12 +11,12 @@ VectorFloatTriplet crossProduct(const VectorFloatTriplet& a, const VectorFloatTr
     return VectorFloatTriplet{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; 
 }
 
-float dotProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
+double dotProduct(const VectorFloatTriplet& a, const VectorFloatTriplet& b) { 
     return a.x * b.x + a.y * b.y + a.z * b.z; 
 }
 
 VectorFloatTriplet normalize(const VectorFloatTriplet& a) { 
-    float length = sqrt(a.x * a.x + a.y * a.y + a.z * a.z); 
+    double length = sqrt(a.x * a.x + a.y * a.y + a.z * a.z); 
     return VectorFloatTriplet{a.x / length, a.y / length, a.z / length}; 
 }
 
@@ -56,11 +56,11 @@ VectorFloatTriplet operator-(const VectorFloatTriplet& a) {
     return VectorFloatTriplet{-a.x, -a.y, -a.z}; 
 }
 
-VectorFloatTriplet operator*(const VectorFloatTriplet& a, const float& b) { 
+VectorFloatTriplet operator*(const VectorFloatTriplet& a, const double& b) { 
     return VectorFloatTriplet{a.x * b, a.y * b, a.z * b}; 
 }
 
-VectorFloatTriplet operator*(const float& a, const VectorFloatTriplet& b) { 
+VectorFloatTriplet operator*(const double& a, const VectorFloatTriplet& b) { 
     return VectorFloatTriplet{a * b.x, a * b.y, a * b.z}; 
 }
 /* VectorIntTriplet */

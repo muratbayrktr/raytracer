@@ -23,7 +23,7 @@ namespace scene {
    };
 
     struct VectorFloatTriplet {
-        float x, y, z;
+        double x, y, z;
     };
 
     struct VectorIntTriplet {
@@ -31,11 +31,44 @@ namespace scene {
     };
 
     struct VectorFloatQuad {
-        float x, y, z, w;
+        double x, y, z, w;
     };
 
     struct VectorIntQuad {
         int x, y, z, w;
+    };
+
+    /*
+    * Transformation structs
+    */
+    struct Translation {
+        unsigned int _id;
+        VectorFloatTriplet data; // dx, dy, dz
+    };
+
+    struct Scaling {
+        unsigned int _id;
+        VectorFloatTriplet data; // sx, sy, sz
+    };
+
+    struct Rotation {
+        unsigned int _id;
+        double angle; // in degrees
+        VectorFloatTriplet axis; // x, y, z
+    };
+
+    struct Composite {
+        unsigned int _id;
+        double data[16]; // 4x4 matrix in row-major order
+    };
+
+    struct TransformationRef {
+        char type; // 't' = translation, 's' = scaling, 'r' = rotation, 'c' = composite
+        unsigned int id;
+    };
+
+    struct Matrix4x4 {
+        double m[16];
     };
 
     /*
@@ -48,15 +81,17 @@ namespace scene {
         VectorFloatTriplet gaze;
         VectorFloatTriplet up;
         VectorFloatQuad nearPlane;
-        float nearDistance;
+        double nearDistance;
         VectorIntPair imageResolution;
         std::string imageName;
+        std::vector<TransformationRef> transformations;
     };
 
     struct PointLight {
         unsigned int _id;
         VectorFloatTriplet position;
         VectorFloatTriplet intensity;
+        std::vector<TransformationRef> transformations;
     };
 
     // Tbh no need for defining ambient light as a struct, but I did it for consistency.
@@ -69,18 +104,28 @@ namespace scene {
         VectorFloatTriplet ambientReflectance;
         VectorFloatTriplet diffuseReflectance;
         VectorFloatTriplet specularReflectance;
-        float phongExponent;
+        double phongExponent;
         bool isMirror = false;
         VectorFloatTriplet mirrorReflectance;
         std::string type = "";
-        float refractionIndex = 1.0f;
-        float absorptionIndex = 0.0f;
+        double refractionIndex = 1.0;
+        double absorptionIndex = 0.0;
         VectorFloatTriplet absorptionCoefficient = {0, 0, 0};
     };
-
+    
+    // Forward declare AABB
+    struct AABB;
+    
     struct Object {
         unsigned int _id;
         Material* material;
+        std::vector<TransformationRef> transformations;
+        Matrix4x4* transformMatrix = nullptr;
+        Matrix4x4* inverseTransformMatrix = nullptr;
+        Matrix4x4* normalMatrix = nullptr;
+        bool hasTransformation = false;
+        bool hasNegativeScale = false;  // True if transformation includes reflection (negative scale)
+        AABB* worldSpaceBounds = nullptr;  // World-space bounding box for transformed objects
     };
 
     struct Mesh : public Object {
@@ -94,7 +139,7 @@ namespace scene {
 
     struct Sphere : public Object {
         unsigned int center;
-        float radius;
+        double radius;
     };
 
     struct Plane : public Object {
@@ -102,10 +147,17 @@ namespace scene {
         VectorFloatTriplet normal;
     };
 
+    struct MeshInstance : public Object {
+        unsigned int baseMeshId;
+        bool resetTransform = false;
+        const Mesh* baseMesh = nullptr;
+        int baseMeshIndex = -1;
+    };
+
     struct Scene {
         VectorFloatTriplet backgroundColor;
-        float shadowRayEpsilon;
-        float intersectionTestEpsilon;
+        double shadowRayEpsilon;
+        double intersectionTestEpsilon;
         int maxRecursionDepth = 0;
         std::vector<Camera> cameras;
         AmbientLight ambientLight;
@@ -117,12 +169,23 @@ namespace scene {
         std::vector<Triangle> triangles;
         std::vector<Sphere> spheres;
         std::vector<Plane> planes;
+        std::vector<MeshInstance> meshInstances;
+        
+        // Transformation storage
+        std::vector<Translation> translations;
+        std::vector<Scaling> scalings;
+        std::vector<Rotation> rotations;
+        std::vector<Composite> composites;
+        std::map<unsigned int, size_t> translationIdToIndex;
+        std::map<unsigned int, size_t> scalingIdToIndex;
+        std::map<unsigned int, size_t> rotationIdToIndex;
+        std::map<unsigned int, size_t> compositeIdToIndex;
 
         // Additional precomputed data
         std::vector<VectorFloatTriplet> triangleNormals;
         std::vector<std::vector<VectorFloatTriplet>> meshVertexNormals;
-        std::vector<std::vector<float>> cameraTriangleDeterminant;
-        std::vector<std::vector<std::vector<float>>> cameraMeshDeterminant;
+        std::vector<std::vector<double>> cameraTriangleDeterminant;
+        std::vector<std::vector<std::vector<double>>> cameraMeshDeterminant;
 
         std::vector<MeshBVH*> meshBVHs;
 
@@ -148,8 +211,15 @@ namespace scene {
         void getSummary();
         
         void writePPM(const std::string& filename, unsigned char* image, int width, int height);
+        
+        void precomputeTransformations();
+        int findBaseMeshIndex(unsigned int meshOrInstanceId) const;
+        const Mesh* findMeshOrInstanceById(unsigned int id) const;
     };
 
+    // Helper function to parse transformation string into TransformationRef vector
+    std::vector<TransformationRef> parseTransformationString(const std::string& transformStr);
+    
     Camera parseCamera(const json& cameraData);
     PointLight parsePointLight(const json& pointLightData);
     Material parseMaterial(const json& materialData);
@@ -159,6 +229,12 @@ namespace scene {
                                                 std::vector<VectorFloatTriplet>& vertexList);
     
     Object parseObject(const json& objectData);
+    
+    // Transformation parsing functions
+    Translation parseTranslation(const json& translationData);
+    Scaling parseScaling(const json& scalingData);
+    Rotation parseRotation(const json& rotationData);
+    Composite parseComposite(const json& compositeData);
 
     struct Ray {
         VectorFloatTriplet origin;
@@ -171,7 +247,7 @@ namespace scene {
 
     struct Intersection {
         bool hit = false;
-        float distance = 0.0f;
+        double distance = 0.0;
         VectorFloatTriplet point;
         VectorFloatTriplet geometricNormal;
         VectorFloatTriplet shadingNormal;
@@ -181,8 +257,8 @@ namespace scene {
         int containerIndex = -1;
         int faceIndex = -1;
         
-        float beta = 0.0f;
-        float gamma = 0.0f;
+        double beta = 0.0;
+        double gamma = 0.0;
         
         Material* material = nullptr;
     };

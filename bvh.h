@@ -33,14 +33,17 @@ namespace scene {
             };
         }
         
-        float surfaceArea() const {
-            float dx = max.x - min.x;
-            float dy = max.y - min.y;
-            float dz = max.z - min.z;
-            return 2.0f * (dx * dy + dy * dz + dz * dx);
+        double surfaceArea() const {
+            double dx = max.x - min.x;
+            double dy = max.y - min.y;
+            double dz = max.z - min.z;
+            return 2.0 * (dx * dy + dy * dz + dz * dx);
         }
         
-        bool intersect(const Ray& ray, float t_min, float t_max) const;
+        bool intersect(const Ray& ray, double t_min, double t_max) const;
+        
+        // Transform AABB by a matrix and recompute axis-aligned bounds
+        AABB transform(const Matrix4x4& mat) const;
     };
 
 
@@ -70,13 +73,20 @@ namespace scene {
             Ray& ray,
             const Mesh& mesh,
             const std::vector<VectorFloatTriplet>& vertices,
-            const std::vector<float>& determinants,
-            float& t_min,
+            const std::vector<double>& determinants,
+            double& t_min,
             Intersection& intersection,
-            float intersectionTestEpsilon,
+            double intersectionTestEpsilon,
             bool enableBackFaceCulling,
-            int meshIndex
+            int meshIndex,
+            Material* materialOverride = nullptr
         ) const;
+        
+        // Get the root bounding box (in local space)
+        const AABB& getRootBounds() const { 
+            static AABB emptyBounds;
+            return nodes.empty() ? emptyBounds : nodes[0].bounds; 
+        }
         
     private:
         int buildRecursive(
@@ -103,6 +113,10 @@ namespace scene {
         static constexpr int MAX_BUILD_DEPTH = 64;
         std::vector<VectorFloatTriplet> faceCentroids;
     };
+    
+    // Helper to compute AABB for a mesh without BVH
+    AABB computeMeshAABB(const Mesh& mesh, const std::vector<VectorFloatTriplet>& vertices);
 }
+
 #endif
 
