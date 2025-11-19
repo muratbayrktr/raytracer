@@ -92,10 +92,10 @@ Multiple instanced dragons with transformations, demonstrating efficient instanc
 
 ![Marching Dragons](./blogs/outputs_hw2/marching_dragons.png)
 
-#### Mirror Room (1.1 seconds)
-Complex scene with perfect reflections and refractions, showcasing dielectric material implementation.
+#### Dragon
+New dragon model with perfect reflections and refractions.
 
-![Mirror Room](./blogs/outputs_hw2/mirror_room.png)
+![Mirror Room](./blogs/outputs_hw2/raven/dragon/dragon_new.png)
 
 #### Metal Glass Plates (861ms)
 Dielectric materials with proper Snell's law refraction and realistic glass rendering.
