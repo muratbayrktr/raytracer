@@ -206,22 +206,6 @@ My C++ code writes a metadata JSON per camera, making benchmarking automatic.
 
 ---
 
-# Results Gallery
-
-![Dragon metal](./outputs_hw2/dragon_metal.png)
-
-![Grass desert](./outputs_hw2/grass/grass_desert.png)
-
-![Simple transform](./outputs_hw2/simple_transform.png)
-
-![Glaring davids](./outputs_hw2/raven/glaring_davids.png)
-
-![Ellipsoids](./outputs_hw2/ellipsoids.png)
-
-![Spheres](./outputs_hw2/spheres.png)
-
----
-
 # Benchmark and Results Table
 
 | Scene | Pre-process (ms) | Render (ms) | Total (ms) | BVH | Multi-Thread | BFC | Final Image |
