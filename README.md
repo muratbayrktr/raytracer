@@ -145,6 +145,8 @@ Time in rayHitsMesh(): 462.72 ms
 
 ### Benchmark Results
 
+Below benchmark is created on Macbook Pro M2 Pro while listening to ['Never Gonna Give You Up' by Rick Astley](https://www.youtube.com/watch?v=dQw4w9WgXcQ). It's not a fair benchmark but at least you are rickrolled.
+
 Top performing scenes with their render times and features:
 
 | Scene | Pre-process | Render | Total | Features | Image |
