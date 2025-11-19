@@ -196,13 +196,13 @@ After stabilizing the renderer, I wrote two helpers:
 My C++ code writes a metadata JSON per camera, making benchmarking automatic.
 
 ### Camera around David  
-<video src="./outputs_hw2/raven/camera_around_david/davids_camera.mp4" width="450" controls></video>
+![Camera around David](./outputs_hw2/raven/camera_around_david/davids_camera.gif)
 
 ### Light animation  
-<video src="./outputs_hw2/raven/light_around_david/davids.mp4" width="450" controls></video>
+![Light around David](./outputs_hw2/raven/light_around_david/davids.gif)
 
 ### Windmill  
-<video src="./outputs_hw2/akif_uslu/windmill/input/windmill.mp4" width="450" controls></video>
+![Windmill](./outputs_hw2/akif_uslu/windmill/input/windmill.gif)
 
 ---
 
@@ -231,18 +231,18 @@ My C++ code writes a metadata JSON per camera, making benchmarking automatic.
 | dragon_new | 117 | 1275 | 1392 | ✅ | ✅ | ❌ | ![Dragon new](./outputs_hw2/raven/dragon/dragon_new.png) |
 | dragon_new_top | 118 | 1245 | 1363 | ✅ | ✅ | ❌ | ![Dragon new top](./outputs_hw2/raven/dragon/dragon_new_top.png) |
 | marching_dragons | 296 | 993 | 1289 | ✅ | ✅ | ❌ | ![Marching dragons](./outputs_hw2/marching_dragons.png) |
-| mirror_room | 0 | 1114 | 1114 | ❌ | ✅ | ❌ | ![Mirror room](./outputs_hw2/mirror_room.png) |
-| dragon_new_right | 118 | 816 | 934 | ❌ | ✅ | ❌ | ![Dragon new right](./outputs_hw2/raven/dragon/dragon_new_right.png) |
-| metal_glass_plates | 0 | 861 | 861 | ❌ | ✅ | ❌ | ![Metal glass plates](./outputs_hw2/metal_glass_plates.png) |
-| windmill (360 frames) | 1.95 | 525.91 | 527.86 | ❌ | ✅ | ❌ | *(Video: windmill.mp4)* |
-| glaring_davids | 25 | 334 | 359 | ❌ | ✅ | ❌ | ![Glaring davids](./outputs_hw2/raven/glaring_davids.png) |
-| davids (360 frames) | 25.85 | 289.64 | 315.49 | ❌ | ✅ | ❌ | *(Video: davids.mp4)* |
-| davids_camera (360 frames) | 26.21 | 263.19 | 289.40 | ❌ | ✅ | ❌ | *(Video: davids_camera.mp4)* |
-| davids_camera_zoom (360 frames) | 26.17 | 254.80 | 280.98 | ❌ | ✅ | ❌ | *(Video: davids_camera_zoom.mp4)* |
-| two_berserkers | 1 | 251 | 252 | ❌ | ✅ | ❌ | ![Two berserkers](./outputs_hw2/akif_uslu/berserker/two_berserkers.png) |
-| ellipsoids | 0 | 86 | 86 | ❌ | ✅ | ❌ | ![Ellipsoids](./outputs_hw2/ellipsoids.png) |
-| spheres | 0 | 70 | 70 | ❌ | ✅ | ❌ | ![Spheres](./outputs_hw2/spheres.png) |
-| simple_transform | 0 | 46 | 46 | ❌ | ✅ | ❌ | ![Simple transform](./outputs_hw2/simple_transform.png) |
+| mirror_room | 0 | 1114 | 1114 | ✅ | ✅ | ❌ | ![Mirror room](./outputs_hw2/mirror_room.png) |
+| dragon_new_right | 118 | 816 | 934 | ✅ | ✅ | ❌ | ![Dragon new right](./outputs_hw2/raven/dragon/dragon_new_right.png) |
+| metal_glass_plates | 0 | 861 | 861 | ✅ | ✅ | ❌ | ![Metal glass plates](./outputs_hw2/metal_glass_plates.png) |
+| windmill (360 frames) | 1.95 | 525.91 | 527.86 | ✅ | ✅ | ❌ | ![Windmill](./outputs_hw2/akif_uslu/windmill/input/windmill.gif) |
+| glaring_davids | 25 | 334 | 359 | ✅ | ✅ | ❌ | ![Glaring davids](./outputs_hw2/raven/glaring_davids.png) |
+| davids (360 frames) | 25.85 | 289.64 | 315.49 | ✅ | ✅ | ❌ | ![Davids](./outputs_hw2/raven/light_around_david/davids.gif) |
+| davids_camera (360 frames) | 26.21 | 263.19 | 289.40 | ✅ | ✅ | ❌ | ![Davids camera](./outputs_hw2/raven/camera_around_david/davids_camera.gif) |
+| davids_camera_zoom (360 frames) | 26.17 | 254.80 | 280.98 | ✅ | ✅ | ❌ | ![Davids camera zoom](./outputs_hw2/raven/camera_zoom_david/davids_camera_zoom.gif) |
+| two_berserkers | 1 | 251 | 252 | ✅ | ✅ | ❌ | ![Two berserkers](./outputs_hw2/akif_uslu/berserker/two_berserkers.png) |
+| ellipsoids | 0 | 86 | 86 | ✅ | ✅ | ❌ | ![Ellipsoids](./outputs_hw2/ellipsoids.png) |
+| spheres | 0 | 70 | 70 | ✅ | ✅ | ❌ | ![Spheres](./outputs_hw2/spheres.png) |
+| simple_transform | 0 | 46 | 46 | ✅ | ✅ | ❌ | ![Simple transform](./outputs_hw2/simple_transform.png) |
 
 
 # What I Learned
