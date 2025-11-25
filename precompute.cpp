@@ -1,7 +1,8 @@
 #include "precompute.h"
 #include "scene.h"
 #include "overloads.h"
-
+#include <cmath>
+#include <random>
 using namespace std;
 using namespace scene;
 
@@ -118,4 +119,29 @@ void precomputeCameraMeshDeterminant(
         }
     }
     return;
+}
+
+
+double uniform_random(double min, double max) {
+    return min + (max - min) * random() / (RAND_MAX + 1.0);
+}
+
+void precomputeSamples(int numSamples, int width, int height, VectorFloatTriplet* samples) {
+    // numSamples is a perfect square (1, 4, 9, 16, etc.), so calculate samples per dimension
+    int samplesPerDimension = static_cast<int>(sqrt(numSamples));
+    int j = 0;
+    double ksi_1, ksi_2;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            for (int s = 0; s < samplesPerDimension; s++) {
+                for (int t = 0; t < samplesPerDimension; t++) {
+                    ksi_1 = uniform_random(0, 1);
+                    ksi_2 = uniform_random(0, 1);
+                    samples[j].x = (t + ksi_1) / samplesPerDimension;
+                    samples[j].y = (s + ksi_2) / samplesPerDimension;
+                    j++;
+                }
+            }
+        }
+    }
 }

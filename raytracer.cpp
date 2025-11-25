@@ -4,13 +4,14 @@
 #include "utils.h"
 #include <cmath>
 #include "precompute.h"
+#include "overloads.h"
 #include <pthread.h>
 #include <vector>
 #include <chrono>
 #include <unistd.h>
 #include <fstream>
 #include <atomic>
-#define OUTPUT_PATH "../my_outputs_hw2/"
+#define OUTPUT_PATH "../my_outputs_hw3/"
 using namespace std;
 using namespace scene;
 
@@ -42,7 +43,7 @@ void printProgress(int processed, int total, std::chrono::time_point<std::chrono
     std::cout << "   " << std::flush;
 }
 
-VectorFloatTriplet __compute(Scene& scene, Camera& camera, int x, int y, int width, int height) {
+VectorFloatTriplet __compute(Scene& scene, Camera& camera, double x, double y, int width, int height) {
     Ray ray = castRay(camera, x, y, width, height);
     Intersection intersection = intersect(scene, ray);
     VectorFloatTriplet pixelColor = computePixelColor(scene, ray, intersection);
@@ -74,10 +75,19 @@ void* threadFunction(void* arg) {
     
     for (int y = args->startY; y < args->endY; ++y) {
         for (int x = 0; x < args->width; ++x) {
-            VectorFloatTriplet pixelColor = __compute(*scene, *camera, x, y, args->width, args->height);
-            args->image[(y * args->width + x) * 3] = (unsigned char) round(pixelColor.x);
-            args->image[(y * args->width + x) * 3 + 1] = (unsigned char) round(pixelColor.y);
-            args->image[(y * args->width + x) * 3 + 2] = (unsigned char) round(pixelColor.z);
+            VectorFloatTriplet pixelColor = {0.0, 0.0, 0.0};
+            int pixelIndex = y * args->width + x;
+            int sampleIndex = pixelIndex * camera->numSamples;
+            for (int k = 0; k < camera->numSamples; k++) {
+                VectorFloatTriplet jitter = camera->samples[sampleIndex + k];
+                double sx = x + jitter.x;   // subpixel x
+                double sy = y + jitter.y;   // subpixel y
+                pixelColor = pixelColor + __compute(*scene, *camera, sx, sy, args->width, args->height);
+            }
+            pixelColor = pixelColor * (1.0 / camera->numSamples);
+            args->image[pixelIndex * 3 + 0] = (unsigned char) round(pixelColor.x);
+            args->image[pixelIndex * 3 + 1] = (unsigned char) round(pixelColor.y);
+            args->image[pixelIndex * 3 + 2] = (unsigned char) round(pixelColor.z);
             
             int processed = ++g_pixelsProcessed;
             if (processed % 10000 == 0 || processed == g_totalPixels) {
@@ -150,10 +160,17 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
     
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            VectorFloatTriplet pixelColor = __compute(scene, camera, x, y, width, height);
-            image[(y * width + x) * 3] = (unsigned char) round(pixelColor.x);
-            image[(y * width + x) * 3 + 1] = (unsigned char) round(pixelColor.y);
-            image[(y * width + x) * 3 + 2] = (unsigned char) round(pixelColor.z);
+            VectorFloatTriplet pixelColor = {0.0, 0.0, 0.0};
+            int pixelIndex = y * width + x;
+            int sampleIndex = pixelIndex * camera.numSamples;
+            for (int k = 0; k < camera.numSamples; k++) {
+                VectorFloatTriplet jitter = camera.samples[sampleIndex + k];
+                pixelColor = pixelColor + __compute(scene, camera, jitter.x, jitter.y, width, height);
+            }
+            pixelColor = pixelColor * (1.0 / camera.numSamples);
+            image[pixelIndex * 3 + 0] = (unsigned char) round(pixelColor.x);
+            image[pixelIndex * 3 + 1] = (unsigned char) round(pixelColor.y);
+            image[pixelIndex * 3 + 2] = (unsigned char) round(pixelColor.z);
             
             int processed = ++g_pixelsProcessed;
             if (processed % 10000 == 0 || processed == g_totalPixels) {
@@ -252,8 +269,13 @@ int main(int argc, char* argv[])
     for (int i = 0; i < scene.cameras.size(); i++) {
         Camera camera = scene.cameras[i];
         scene.currentCameraIndex = i;
+        int numSamples = camera.numSamples;
         int width = camera.imageResolution.x;
         int height = camera.imageResolution.y;
+        // numSamples is a perfect square (1, 4, 9, 16, etc.), total samples per pixel
+        VectorFloatTriplet* samples = new VectorFloatTriplet[numSamples * width * height];
+        precomputeSamples(numSamples, width, height, samples);
+        camera.samples = samples;
         unsigned char* image = new unsigned char[width * height * 3];
         if (args.isMultiThreaded) {
             renderTimeMs = multiThreadedRayTracing(scene, camera, width, height, image);
@@ -265,6 +287,7 @@ int main(int argc, char* argv[])
         string outputName = camera.imageName;
         scene.writePPM((OUTPUT_PATH + outputName).c_str(), image, width, height);
         delete[] image;
+        delete[] samples;
 
         json results = {
             {"sceneName", outputName},

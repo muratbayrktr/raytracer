@@ -12,5 +12,5 @@ void precomputeMeshNormals(const vector<Mesh>& meshes, vector<vector<VectorFloat
 void precomputeTriangleNormals(const vector<Triangle>& triangles, vector<VectorFloatTriplet>& triangleNormals, const vector<VectorFloatTriplet>& vertices);
 void precomputeCameraTriangleDeterminant(const Scene& scene, vector<vector<double>>& cameraTriangleDeterminant);
 void precomputeCameraMeshDeterminant(const Scene& scene, vector<vector<vector<double>>>& cameraMeshDeterminant);
-
+void precomputeSamples(int numSamples, int width, int height, VectorFloatTriplet *samples);
 #endif

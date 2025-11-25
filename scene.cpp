@@ -180,6 +180,27 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         } else {
             verbose("[!] Skipping PointLight Parsing. Reason: Not found in the scene file. Assigning default value: 0");
         }
+
+        if (lights.contains("AreaLight") && !lights["AreaLight"].is_null()) {
+            auto areaLightArray = lights["AreaLight"];
+            if (areaLightArray.is_array()) {
+                for (auto areaLightData : areaLightArray) {
+                    scene::AreaLight newAreaLight = parseAreaLight(areaLightData);
+                    if (newAreaLight._id != 0) {
+                        this->areaLights.push_back(newAreaLight);
+                        verbose("[+] AreaLight Parsed: " + std::to_string(newAreaLight._id));
+                    }
+                }
+            } else {
+                scene::AreaLight newAreaLight = parseAreaLight(areaLightArray);
+                if (newAreaLight._id != 0) {
+                    this->areaLights.push_back(newAreaLight);
+                    verbose("[+] AreaLight Parsed: " + std::to_string(newAreaLight._id));
+                }
+            }
+        } else {
+            verbose("[!] Skipping AreaLight Parsing. Reason: Not found in the scene file.");
+        }
     } else {
         verbose("[!] Skipping Lights Parsing. Reason: Not found in the scene file. Assigning default value: 0");
     }
@@ -411,6 +432,33 @@ scene::Camera scene::parseCamera(const json& cameraData) {
         verbose("[+] Camera Transformations parsed: " + transformStr + " (" + std::to_string(newCamera.transformations.size()) + " transforms)");
     }
     
+    // Parse NumSamples if present
+    if (cameraData.contains("NumSamples") && !cameraData["NumSamples"].is_null()) {
+        newCamera.numSamples = parseSingleValue<int>(cameraData["NumSamples"]);
+        verbose("[+] Camera NumSamples parsed: " + std::to_string(newCamera.numSamples));
+    } else {
+        newCamera.numSamples = 1;
+        verbose("[!] Camera NumSamples not found, using default: 1");
+    }
+    
+    // Parse ApertureSize if present (optional, enables depth-of-field)
+    if (cameraData.contains("ApertureSize") && !cameraData["ApertureSize"].is_null()) {
+        newCamera.apertureSize = parseSingleValue<double>(cameraData["ApertureSize"]);
+        verbose("[+] Camera ApertureSize parsed: " + std::to_string(newCamera.apertureSize));
+    } else {
+        newCamera.apertureSize = 0.0;
+        verbose("[!] Camera ApertureSize not found, depth-of-field disabled");
+    }
+    
+    // Parse FocusDistance if present (used with ApertureSize)
+    if (cameraData.contains("FocusDistance") && !cameraData["FocusDistance"].is_null()) {
+        newCamera.focusDistance = parseSingleValue<double>(cameraData["FocusDistance"]);
+        verbose("[+] Camera FocusDistance parsed: " + std::to_string(newCamera.focusDistance));
+    } else {
+        newCamera.focusDistance = 0.0;
+        verbose("[!] Camera FocusDistance not found, using default: 0.0");
+    }
+    
     return newCamera;
 }
 
@@ -428,6 +476,24 @@ scene::PointLight scene::parsePointLight(const json& pointLightData) {
     }
     
     return newPointLight;
+}
+
+scene::AreaLight scene::parseAreaLight(const json& areaLightData) {
+    scene::AreaLight newAreaLight;
+    newAreaLight._id = parseSingleValue<unsigned int>(areaLightData["_id"]);
+    newAreaLight.position = parseTriplet<VectorFloatTriplet>(areaLightData["Position"]);
+    newAreaLight.normal = parseTriplet<VectorFloatTriplet>(areaLightData["Normal"]);
+    newAreaLight.size = parseSingleValue<double>(areaLightData["Size"]);
+    newAreaLight.radiance = parseTriplet<VectorFloatTriplet>(areaLightData["Radiance"]);
+    
+    // Parse transformations if present
+    if (areaLightData.contains("Transformations") && !areaLightData["Transformations"].is_null()) {
+        std::string transformStr = areaLightData["Transformations"].get<std::string>();
+        newAreaLight.transformations = parseTransformationString(transformStr);
+        verbose("[+] AreaLight Transformations parsed: " + transformStr + " (" + std::to_string(newAreaLight.transformations.size()) + " transforms)");
+    }
+    
+    return newAreaLight;
 }
 
 scene::Material scene::parseMaterial(const json& materialData) {
@@ -468,6 +534,15 @@ scene::Material scene::parseMaterial(const json& materialData) {
             newMaterial.absorptionCoefficient = parseTriplet<VectorFloatTriplet>(materialData["AbsorptionCoefficient"]);
         }
     }
+    
+    // Parse Roughness if present (for mirrors, conductors, and dielectrics)
+    if (materialData.contains("Roughness") && !materialData["Roughness"].is_null()) {
+        newMaterial.roughness = parseSingleValue<double>(materialData["Roughness"]);
+        verbose("[+] Material Roughness parsed: " + std::to_string(newMaterial.roughness));
+    } else {
+        newMaterial.roughness = 0.0;
+    }
+    
     return newMaterial;
 }
 
@@ -576,6 +651,16 @@ void scene::Scene::parseSpecificAttributes<scene::Mesh>(scene::Mesh& object, con
     if (objectData.contains("Faces") && !objectData["Faces"].is_null()) {
         object.faces = parseFaces(objectData["Faces"]);
     }
+    
+    // Parse MotionBlur if present
+    if (objectData.contains("MotionBlur") && !objectData["MotionBlur"].is_null()) {
+        object.motionBlur = parseTriplet<VectorFloatTriplet>(objectData["MotionBlur"]);
+        object.hasMotionBlur = true;
+        verbose("[+] Mesh MotionBlur parsed: " + std::to_string(object.motionBlur.x) + " " + std::to_string(object.motionBlur.y) + " " + std::to_string(object.motionBlur.z));
+    } else {
+        object.motionBlur = {0, 0, 0};
+        object.hasMotionBlur = false;
+    }
 }
 
 template<>
@@ -586,6 +671,16 @@ void scene::Scene::parseSpecificAttributes<scene::Triangle>(scene::Triangle& obj
         object.indices.x -= 1;
         object.indices.y -= 1;
         object.indices.z -= 1;
+    }
+    
+    // Parse MotionBlur if present
+    if (objectData.contains("MotionBlur") && !objectData["MotionBlur"].is_null()) {
+        object.motionBlur = parseTriplet<VectorFloatTriplet>(objectData["MotionBlur"]);
+        object.hasMotionBlur = true;
+        verbose("[+] Triangle MotionBlur parsed: " + std::to_string(object.motionBlur.x) + " " + std::to_string(object.motionBlur.y) + " " + std::to_string(object.motionBlur.z));
+    } else {
+        object.motionBlur = {0, 0, 0};
+        object.hasMotionBlur = false;
     }
 }
 
@@ -599,6 +694,16 @@ void scene::Scene::parseSpecificAttributes<scene::Sphere>(scene::Sphere& object,
     if (objectData.contains("Radius")) {
         object.radius = parseSingleValue<double>(objectData["Radius"]);
     }
+    
+    // Parse MotionBlur if present
+    if (objectData.contains("MotionBlur") && !objectData["MotionBlur"].is_null()) {
+        object.motionBlur = parseTriplet<VectorFloatTriplet>(objectData["MotionBlur"]);
+        object.hasMotionBlur = true;
+        verbose("[+] Sphere MotionBlur parsed: " + std::to_string(object.motionBlur.x) + " " + std::to_string(object.motionBlur.y) + " " + std::to_string(object.motionBlur.z));
+    } else {
+        object.motionBlur = {0, 0, 0};
+        object.hasMotionBlur = false;
+    }
 }
 
 template<>
@@ -610,6 +715,16 @@ void scene::Scene::parseSpecificAttributes<scene::Plane>(scene::Plane& object, c
     }
     if (objectData.contains("Normal")) {
         object.normal = parseTriplet<VectorFloatTriplet>(objectData["Normal"]);
+    }
+    
+    // Parse MotionBlur if present
+    if (objectData.contains("MotionBlur") && !objectData["MotionBlur"].is_null()) {
+        object.motionBlur = parseTriplet<VectorFloatTriplet>(objectData["MotionBlur"]);
+        object.hasMotionBlur = true;
+        verbose("[+] Plane MotionBlur parsed: " + std::to_string(object.motionBlur.x) + " " + std::to_string(object.motionBlur.y) + " " + std::to_string(object.motionBlur.z));
+    } else {
+        object.motionBlur = {0, 0, 0};
+        object.hasMotionBlur = false;
     }
 }
 
@@ -623,6 +738,16 @@ void scene::Scene::parseSpecificAttributes<scene::MeshInstance>(scene::MeshInsta
         object.resetTransform = (resetTransformStr == "true" || resetTransformStr == "True" || resetTransformStr == "TRUE" || resetTransformStr == "1");
     } else {
         object.resetTransform = false;
+    }
+    
+    // Parse MotionBlur if present
+    if (objectData.contains("MotionBlur") && !objectData["MotionBlur"].is_null()) {
+        object.motionBlur = parseTriplet<VectorFloatTriplet>(objectData["MotionBlur"]);
+        object.hasMotionBlur = true;
+        verbose("[+] MeshInstance MotionBlur parsed: " + std::to_string(object.motionBlur.x) + " " + std::to_string(object.motionBlur.y) + " " + std::to_string(object.motionBlur.z));
+    } else {
+        object.motionBlur = {0, 0, 0};
+        object.hasMotionBlur = false;
     }
 }
 
@@ -645,9 +770,13 @@ void scene::Scene::getSummary() {
     for (auto camera : this->cameras) {
         verbose("\t Camera: " + std::to_string(camera._id) + "| Position: " + std::to_string(camera.position.x) + " " + std::to_string(camera.position.y) + " " + std::to_string(camera.position.z) + "| Gaze: " + std::to_string(camera.gaze.x) + " " + std::to_string(camera.gaze.y) + " " + std::to_string(camera.gaze.z) + "| Up: " + std::to_string(camera.up.x) + " " + std::to_string(camera.up.y) + " " + std::to_string(camera.up.z) + "| NearPlane: " + std::to_string(camera.nearPlane.x) + " " + std::to_string(camera.nearPlane.y) + " " + std::to_string(camera.nearPlane.z) + " " + std::to_string(camera.nearPlane.w) + "| NearDistance: " + std::to_string(camera.nearDistance) + "| ImageResolution: " + std::to_string(camera.imageResolution.x) + " " + std::to_string(camera.imageResolution.y) + "| ImageName: " + camera.imageName);
     }
-    verbose("Lights: " + std::to_string(this->pointLights.size()) + "| lights: ");
+    verbose("Point Lights: " + std::to_string(this->pointLights.size()) + "| lights: ");
     for (auto light : this->pointLights) {
         verbose("\t Light: " + std::to_string(light._id) + "| Position: " + std::to_string(light.position.x) + " " + std::to_string(light.position.y) + " " + std::to_string(light.position.z) + "| Intensity: " + std::to_string(light.intensity.x) + " " + std::to_string(light.intensity.y) + " " + std::to_string(light.intensity.z));
+    }
+    verbose("Area Lights: " + std::to_string(this->areaLights.size()) + "| lights: ");
+    for (auto light : this->areaLights) {
+        verbose("\t Light: " + std::to_string(light._id) + "| Position: " + std::to_string(light.position.x) + " " + std::to_string(light.position.y) + " " + std::to_string(light.position.z) + "| Normal: " + std::to_string(light.normal.x) + " " + std::to_string(light.normal.y) + " " + std::to_string(light.normal.z) + "| Size: " + std::to_string(light.size) + "| Radiance: " + std::to_string(light.radiance.x) + " " + std::to_string(light.radiance.y) + " " + std::to_string(light.radiance.z));
     }
     verbose("Materials: " + std::to_string(this->materials.size()) + "| materials: ");
     for (auto material : this->materials) {
@@ -983,6 +1112,15 @@ void scene::Scene::precomputeTransformations() {
             Matrix4x4 lightTransform = buildObjectTransformMatrix(*this, light.transformations);
             light.position = transformPoint(lightTransform, light.position);
             verbose("[+] Applied transformation to light " + std::to_string(light._id));
+        }
+    }
+    
+    for (auto& areaLight : areaLights) {
+        if (!areaLight.transformations.empty()) {
+            Matrix4x4 lightTransform = buildObjectTransformMatrix(*this, areaLight.transformations);
+            areaLight.position = transformPoint(lightTransform, areaLight.position);
+            areaLight.normal = normalize(transformDirection(lightTransform, areaLight.normal));
+            verbose("[+] Applied transformation to area light " + std::to_string(areaLight._id));
         }
     }
     

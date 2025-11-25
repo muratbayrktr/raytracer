@@ -25,7 +25,7 @@ bool hasNegativeScale(const Matrix4x4& m);
 void clamp(VectorFloatTriplet& color, int min, int max);
 
 /* Ray Functions */
-Ray castRay(const Camera& camera, int x, int y, int width, int height);
+Ray castRay(const Camera& camera, double x, double y, int width, int height);
 
 /* Intersection Functions */
 Intersection intersect(const Scene& scene, Ray& ray); 

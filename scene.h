@@ -85,12 +85,25 @@ namespace scene {
         VectorIntPair imageResolution;
         std::string imageName;
         std::vector<TransformationRef> transformations;
+        int numSamples = 1;  // Perfect square (1, 4, 16, etc.) for jittered sampling
+        double apertureSize = 0.0;  // 0 means no depth-of-field
+        double focusDistance = 0.0;  // Focus distance for depth-of-field
+        VectorFloatTriplet* samples = nullptr;
     };
 
     struct PointLight {
         unsigned int _id;
         VectorFloatTriplet position;
         VectorFloatTriplet intensity;
+        std::vector<TransformationRef> transformations;
+    };
+
+    struct AreaLight {
+        unsigned int _id;
+        VectorFloatTriplet position;  // Center point of the area light
+        VectorFloatTriplet normal;    // Surface normal of the light
+        double size;                  // Edge length of the square area light
+        VectorFloatTriplet radiance;   // Radiance of the light
         std::vector<TransformationRef> transformations;
     };
 
@@ -111,6 +124,7 @@ namespace scene {
         double refractionIndex = 1.0;
         double absorptionIndex = 0.0;
         VectorFloatTriplet absorptionCoefficient = {0, 0, 0};
+        double roughness = 0.0;  // Roughness for mirrors, conductors, and dielectrics
     };
     
     // Forward declare AABB
@@ -126,6 +140,8 @@ namespace scene {
         bool hasTransformation = false;
         bool hasNegativeScale = false;  // True if transformation includes reflection (negative scale)
         AABB* worldSpaceBounds = nullptr;  // World-space bounding box for transformed objects
+        VectorFloatTriplet motionBlur = {0, 0, 0};  // Displacement vector for motion blur (translational only)
+        bool hasMotionBlur = false;
     };
 
     struct Mesh : public Object {
@@ -162,6 +178,7 @@ namespace scene {
         std::vector<Camera> cameras;
         AmbientLight ambientLight;
         std::vector<PointLight> pointLights;
+        std::vector<AreaLight> areaLights;
         std::vector<Material> materials;
         std::map<unsigned int, size_t> materialIdToIndex;
         std::vector<VectorFloatTriplet> vertices;
@@ -222,6 +239,7 @@ namespace scene {
     
     Camera parseCamera(const json& cameraData);
     PointLight parsePointLight(const json& pointLightData);
+    AreaLight parseAreaLight(const json& areaLightData);
     Material parseMaterial(const json& materialData);
     std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
     
@@ -243,6 +261,17 @@ namespace scene {
         bool shadowRay;
         bool reflectionRay;
         bool refractionRay;
+        double time;  // Time value for motion blur (0.0 to 1.0)
+        
+        // Default constructor
+        Ray() : origin({0, 0, 0}), direction({0, 0, 0}), depth(0), 
+                shadowRay(false), reflectionRay(false), refractionRay(false), time(0.0) {}
+        
+        // Constructor with all parameters
+        Ray(const VectorFloatTriplet& o, const VectorFloatTriplet& d, int dep, 
+            bool shadow, bool reflection, bool refraction, double t)
+            : origin(o), direction(d), depth(dep), shadowRay(shadow), 
+              reflectionRay(reflection), refractionRay(refraction), time(t) {}
     };
 
     struct Intersection {

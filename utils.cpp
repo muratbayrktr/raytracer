@@ -131,7 +131,7 @@ void clamp(VectorFloatTriplet& color, int min, int max) {
     if (color.z > max) color.z = max;
 }
 
-Ray castRay(const Camera& camera, int x, int y, int width, int height) {
+Ray castRay(const Camera& camera, double x, double y, int width, int height) {
     VectorFloatTriplet w = -normalize(camera.gaze);
     VectorFloatTriplet v = normalize(camera.up);
     VectorFloatTriplet u = crossProduct(v, w);
@@ -153,7 +153,7 @@ Ray castRay(const Camera& camera, int x, int y, int width, int height) {
     */
     VectorFloatTriplet ray_direction = s - e;
     VectorFloatTriplet origin = e;
-    Ray ray = Ray{origin, normalize(ray_direction), 0, false, false, false};
+    Ray ray = Ray{origin, normalize(ray_direction), 0, false, false, false, 0.0};
     return ray;
 }
 
@@ -1070,7 +1070,8 @@ bool isInShadow(const Scene& scene, Ray& /*ray*/, const PointLight& light, const
         0,
         true,   // shadow ray
         false,  // reflection ray
-        false   // refraction ray
+        false,   // refraction ray
+        0.0  // time value for motion blur
     };
 
     Intersection shadowIntersection = intersect(scene, shadowRay);
@@ -1147,7 +1148,7 @@ Ray refract(Ray& ray,
 
     if (totalInternalReflection) {
         // Return a dummy ray; caller will ignore refracted path
-        return Ray{point, ray.direction, ray.depth, false, false, false};
+        return Ray{point, ray.direction, ray.depth, false, false, false, 0.0};
     }
 
     double cosPhi = std::sqrt(std::max(0.0, 1.0 - sinThetaTSq));
@@ -1160,7 +1161,8 @@ Ray refract(Ray& ray,
         ray.depth + 1,
         false,
         false,
-        true
+        true,
+        0.0
     };
 }
 
@@ -1177,7 +1179,8 @@ Ray reflect(Ray& ray,
         ray.depth + 1,
         false,
         true,
-        false
+        false,
+        0.0
     };
 }
 
