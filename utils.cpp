@@ -7,6 +7,7 @@
 #include "utils.h"
 #include "overloads.h"
 #include "bvh.h"
+#include "precompute.h"
 
 using namespace std;
 using namespace scene;
@@ -145,14 +146,25 @@ Ray castRay(const Camera& camera, double x, double y, int width, int height) {
     VectorFloatTriplet m = e - w * camera.nearDistance;
     VectorFloatTriplet q = m + l*u + t*v;
     VectorFloatTriplet s = q + u*s_u - v*s_v;
-    /* 
-        From lecture slides:
-        r(t) = e + t * (s - e) 
-        ray_direction = s - e
-        origin = e
-    */
+    
     VectorFloatTriplet ray_direction = s - e;
     VectorFloatTriplet origin = e;
+    
+    // Depth-of-field: if aperture > 0, sample lens and aim at focal point
+    if (camera.apertureSize > 0.0) {
+        // Focal point: scale ray to reach focal plane at focusDistance
+        double scale = camera.focusDistance / camera.nearDistance;
+        VectorFloatTriplet focalPoint = e + ray_direction * scale;
+        
+        // Sample random point on square aperture (centered at camera origin)
+        double halfAperture = camera.apertureSize / 2.0;
+        double lensU = uniform_random(-halfAperture, halfAperture);
+        double lensV = uniform_random(-halfAperture, halfAperture);
+        origin = e + u * lensU + v * lensV;
+        
+        ray_direction = focalPoint - origin;
+    }
+    
     Ray ray = Ray{origin, normalize(ray_direction), 0, false, false, false, 0.0};
     return ray;
 }
