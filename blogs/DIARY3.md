@@ -66,3 +66,15 @@ for (int y = args->startY; ...) {
     }
 }
 ```
+
+## 2025-11-26
+
+Keeping this as a diary was really good idea because now I am able to instantly start working on things as I am continuing from where I left off by recalling from previous days logs. Now that I am done with sampling part. I am moving on to aperture and focus distance.
+
+It just took 6-7 lines of code and I wasn't expecting this and I think it works just fine. 
+
+After I implement the sampling the speed kinda dropped but I will take care of it later not a big problem for now.
+
+I now tried some scenes with brushed metal and area light. I thought area light is working okay-ish but it doesn't create a brightness on the ceiling. Similarly conductor and dielectrics are kinda off when considering the area light. Something is not adding up but I'll find it.
+
+
