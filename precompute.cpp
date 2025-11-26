@@ -123,7 +123,9 @@ void precomputeCameraMeshDeterminant(
 
 
 double uniform_random(double min, double max) {
-    return min + (max - min) * random() / (RAND_MAX + 1.0);
+    static std::mt19937 gen(std::random_device{}());
+    std::uniform_real_distribution<double> dist(min, max);
+    return dist(gen);
 }
 
 void precomputeSamples(int numSamples, int width, int height, VectorFloatTriplet* samples) {

@@ -165,7 +165,9 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
             int sampleIndex = pixelIndex * camera.numSamples;
             for (int k = 0; k < camera.numSamples; k++) {
                 VectorFloatTriplet jitter = camera.samples[sampleIndex + k];
-                pixelColor = pixelColor + __compute(scene, camera, jitter.x, jitter.y, width, height);
+                double sx = x + jitter.x;   // subpixel x
+                double sy = y + jitter.y;   // subpixel y
+                pixelColor = pixelColor + __compute(scene, camera, sx, sy, width, height);
             }
             pixelColor = pixelColor * (1.0 / camera.numSamples);
             image[pixelIndex * 3 + 0] = (unsigned char) round(pixelColor.x);

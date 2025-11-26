@@ -13,4 +13,5 @@ void precomputeTriangleNormals(const vector<Triangle>& triangles, vector<VectorF
 void precomputeCameraTriangleDeterminant(const Scene& scene, vector<vector<double>>& cameraTriangleDeterminant);
 void precomputeCameraMeshDeterminant(const Scene& scene, vector<vector<vector<double>>>& cameraMeshDeterminant);
 void precomputeSamples(int numSamples, int width, int height, VectorFloatTriplet *samples);
+double uniform_random(double min, double max);
 #endif
