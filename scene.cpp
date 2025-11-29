@@ -104,7 +104,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         this->maxRecursionDepth = parseSingleValue<int>(maxRecursionDepth);
         verbose("[+] MaxRecursionDepth parsed: " + std::to_string(this->maxRecursionDepth)); 
     } else {
-        this->maxRecursionDepth = 0;
+        this->maxRecursionDepth = 1;
         verbose("[!] Skipping MaxRecursionDepth parsing. Reason: Not found in the scene file " + std::to_string(this->maxRecursionDepth)); 
     }
 
@@ -113,7 +113,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         this->shadowRayEpsilon = parseSingleValue<double>(shadowRayEpsilon);
         verbose("[+] ShadowRayEpsilon Parsed: " + std::to_string(this->shadowRayEpsilon));
     } else {
-        this->shadowRayEpsilon = 0.001f;
+        this->shadowRayEpsilon = 0.01;
         verbose("[!] Skipping ShadowRayEpsilon Parsing. Reason: Not found in the scene file. Assigning default value: " + std::to_string(shadowRayEpsilon));
     }
 
@@ -122,7 +122,7 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         this->intersectionTestEpsilon = parseSingleValue<double>(intersectionTestEpsilonStr);
         verbose("[+] IntersectionTestEpsilon Parsed: " + std::to_string(this->intersectionTestEpsilon));
     } else {
-        this->intersectionTestEpsilon = 1e-10f;
+        this->intersectionTestEpsilon = 0.0;
         verbose("[!] Skipping IntersectionTestEpsilon Parsing. Reason: Not found in the scene file. Assigning default value: " + std::to_string(this->intersectionTestEpsilon));
     }
 
@@ -926,14 +926,17 @@ std::vector<scene::TransformationRef> scene::parseTransformationString(const std
 }
 
 const Mesh* scene::Scene::findMeshOrInstanceById(unsigned int id) const {
+    // First check if it's a direct mesh
     for (const auto& mesh : meshes) {
         if (mesh._id == id) {
             return &mesh;
         }
     }
+    // If it's an instance, recursively follow the chain to find the actual base mesh
     for (const auto& instance : meshInstances) {
         if (instance._id == id) {
-            return instance.baseMesh;
+            // Recursively follow baseMeshId to get the actual mesh
+            return findMeshOrInstanceById(instance.baseMeshId);
         }
     }
     return nullptr;
@@ -1011,11 +1014,17 @@ void scene::Scene::precomputeTransformations() {
         instance.baseMesh = findMeshOrInstanceById(instance.baseMeshId);
         instance.baseMeshIndex = findBaseMeshIndex(instance.baseMeshId);
         
+        verbose("[+] Mesh instance " + std::to_string(instance._id) + " references base " + std::to_string(instance.baseMeshId) + 
+                " -> baseMesh=" + (instance.baseMesh ? "OK" : "NULL") + 
+                " baseMeshIndex=" + std::to_string(instance.baseMeshIndex));
+        
         if (instance.baseMesh) {
             // Inherit material from base mesh if not specified
             if (instance.material == nullptr) {
                 instance.material = instance.baseMesh->material;
                 verbose("[+] Mesh instance " + std::to_string(instance._id) + " inherited material from base mesh");
+            } else {
+                verbose("[+] Mesh instance " + std::to_string(instance._id) + " has explicit material " + std::to_string(instance.material->_id));
             }
             
             Matrix4x4 finalMatrix;
@@ -1099,10 +1108,39 @@ void scene::Scene::precomputeTransformations() {
     
     for (auto& camera : cameras) {
         if (!camera.transformations.empty()) {
+            // Derive a zoom factor from any Scaling transformations referenced by this camera.
+            // This is required for camera-zoom scenes where the zoom is encoded as a scale
+            // (e.g. via s3) rather than by directly animating the near plane / FOV.
+            double zoomFactor = 1.0;
+            for (const auto& ref : camera.transformations) {
+                if (ref.type == 's') {
+                    auto it = scalingIdToIndex.find(ref.id);
+                    if (it != scalingIdToIndex.end()) {
+                        const Scaling& s = scalings[it->second];
+                        // Use the Y scale component as the zoom driver (matches provided scenes).
+                        if (s.data.y > 0.0) {
+                            zoomFactor *= s.data.y;
+                        }
+                    }
+                }
+            }
+
             Matrix4x4 cameraTransform = buildObjectTransformMatrix(*this, camera.transformations);
             camera.position = transformPoint(cameraTransform, camera.position);
             camera.gaze = normalize(transformDirection(cameraTransform, camera.gaze));
             camera.up = normalize(transformDirection(cameraTransform, camera.up));
+
+            // Apply zoom by shrinking / expanding the camera's near-plane extents.
+            // Larger zoomFactor => smaller near-plane window => narrower FOV => zoom in.
+            if (zoomFactor != 1.0) {
+                camera.nearPlane.x /= zoomFactor;
+                camera.nearPlane.y /= zoomFactor;
+                camera.nearPlane.z /= zoomFactor;
+                camera.nearPlane.w /= zoomFactor;
+                verbose("[+] Applied camera zoom factor " + std::to_string(zoomFactor) +
+                        " to near plane for camera " + std::to_string(camera._id));
+            }
+
             verbose("[+] Applied transformation to camera " + std::to_string(camera._id));
         }
     }

@@ -259,11 +259,24 @@ bool rayHitsSphere(
     if(D < 0) return false;
     double t1 = (-dotProduct(d, o - c) + sqrt(D)) / dotProduct(d, d);
     double t2 = (-dotProduct(d, o - c) - sqrt(D)) / dotProduct(d, d);
-    double t = min(t1, t2);
+    
+    // Pick the closest positive t value
+    // t2 <= t1 always (since t2 uses -sqrt)
+    // If t2 > 0, use it (ray hits front surface from outside)
+    // If t2 <= 0 but t1 > 0, use t1 (ray inside sphere, hits exit point)
+    double t;
+    if (t2 > 0) {
+        t = t2;  // Front surface hit (entering sphere from outside)
+    } else if (t1 > 0) {
+        t = t1;  // Back surface hit (exiting sphere from inside)
+    } else {
+        return false;  // Both negative, sphere is behind the ray
+    }
+    
     VectorFloatTriplet objectPoint = o + d * t;
     VectorFloatTriplet objectNormal = normalize(objectPoint - c);
     
-    if(t > 0 && t < t_min) {
+    if(t < t_min) {
         if (sphere.hasTransformation) {
             const double* transPtr = sphere.transformMatrix->m;
             const double* normPtr = sphere.normalMatrix->m;
@@ -428,6 +441,12 @@ bool rayHitsMesh(
 #endif
     
     bool hasTransform = (mesh.hasTransformation || transformMatrix != nullptr);
+
+    double original_t_min = t_min;
+
+    // Local t_min for intersection tests
+    double local_t_min = hasTransform
+    ? std::numeric_limits<double>::max() : t_min;
     
 #if PROFILE_PERF
     if (hasTransform) g_transformedMeshCalls++;
@@ -441,7 +460,7 @@ bool rayHitsMesh(
 #if PROFILE_PERF
             g_bvhTraversals++;
 #endif
-            return bvh->traverse(ray, mesh, vertices, determinants, t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex, materialToUse);
+            return bvh->traverse(ray, mesh, vertices, determinants, local_t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex, materialToUse);
         }
         bool hit = false;
         for(int i = 0; i < (int)mesh.faces.size(); i++) {
@@ -476,8 +495,6 @@ bool rayHitsMesh(
         g_worldBoundsAccepts++;
 #endif
     }
-    
-    double original_t_min = t_min;
     
 #if PROFILE_PERF
     auto t_transform_start = std::chrono::high_resolution_clock::now();
@@ -519,7 +536,7 @@ bool rayHitsMesh(
 #endif
         // For transformed meshes, don't use precomputed determinants (ray origin has changed in local space)
         const vector<double>& dets = hasTransform ? vector<double>() : determinants;
-        hit = bvh->traverse(objectRay, mesh, vertices, dets, t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex, materialToUse);
+        hit = bvh->traverse(objectRay, mesh, vertices, dets, local_t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex, materialToUse);
 #if PROFILE_PERF
         auto t_bvh_end = std::chrono::high_resolution_clock::now();
         g_timeBVHTraverse += std::chrono::duration_cast<std::chrono::nanoseconds>(t_bvh_end - t_bvh_start).count();
@@ -531,7 +548,7 @@ bool rayHitsMesh(
         for(int i = 0; i < (int)mesh.faces.size(); i++) {
             // For transformed meshes, always pass 0.0 to force determinant recomputation
             double det = hasTransform ? 0.0 : (i < (int)determinants.size() ? determinants[i] : 0.0);
-            if (rayHitsTriangle(objectRay, mesh.faces[i], vertices, t_min, intersection, intersectionTestEpsilon, det, materialToUse, enableBackFaceCulling, meshIndex, i)) {
+            if (rayHitsTriangle(objectRay, mesh.faces[i], vertices, local_t_min, intersection, intersectionTestEpsilon, det, materialToUse, enableBackFaceCulling, meshIndex, i)) {
                 hit = true;
                 intersection.kind = Intersection::Kind::Mesh;
             }
@@ -656,11 +673,10 @@ bool rayHitsMesh(
         worldShadingNormal.z *= sinv;
     }
     
-    // Ensure normals face the camera (critical for mirror reflections and lighting)
-    if (dotProduct(worldGeomNormal, ray.direction) > 0.0) {
-        worldGeomNormal = -worldGeomNormal;
-        worldShadingNormal = -worldShadingNormal;
-    }
+    // NOTE: Do NOT flip normals here to face the camera!
+    // Dielectric materials need the original geometric normal direction 
+    // to determine if the ray is entering or exiting the medium.
+    // The shading code will handle normal orientation per material type.
     
     intersection.point = worldPoint;
     intersection.geometricNormal = worldGeomNormal;
@@ -850,13 +866,11 @@ Intersection intersect(const Scene& scene, Ray& ray) {
                 
                 intersection.shadingNormal = smoothNormal;
                 
-                // Ensure both normals face the camera
-                // This is critical for mesh instances with negative scale transformations
-                if (dotProduct(intersection.geometricNormal, ray.direction) > 0.0) {
-                    intersection.geometricNormal = -intersection.geometricNormal;
-                    intersection.shadingNormal = -intersection.shadingNormal;
-                } else if (dotProduct(intersection.shadingNormal, intersection.geometricNormal) < 0.0) {
-                    // Align shading normal with geometric normal
+                // NOTE: Do NOT flip normals here to face the camera!
+                // Dielectric materials need the original geometric normal direction 
+                // to determine if the ray is entering or exiting the medium.
+                // Just ensure shading normal is aligned with geometric normal.
+                if (dotProduct(intersection.shadingNormal, intersection.geometricNormal) < 0.0) {
                     intersection.shadingNormal = -intersection.shadingNormal;
                 }
                 }
@@ -876,6 +890,39 @@ Intersection intersect(const Scene& scene, Ray& ray) {
     return intersection;
 }
 
+void orthonormalBasis(const VectorFloatTriplet& n, VectorFloatTriplet& u, VectorFloatTriplet& v) {
+    if (std::abs(n.x) > std::abs(n.y)) {
+        double invLen = 1.0 / std::sqrt(n.x * n.x + n.z * n.z);
+        u = VectorFloatTriplet{-n.z * invLen, 0.0, n.x * invLen};
+    } else {
+        double invLen = 1.0 / std::sqrt(n.y * n.y + n.z * n.z);
+        u = VectorFloatTriplet{0.0, -n.z * invLen, n.y * invLen};
+    }
+    v = crossProduct(n, u);
+    u = normalize(u);
+    v = normalize(v);
+}
+
+// Perturb direction within a cone around the ideal direction
+// roughness controls the cone half-angle (in radians, typically 0 to ~0.5)
+VectorFloatTriplet perturbDirection(const VectorFloatTriplet& idealDir, double roughness) {
+    if (roughness <= 0.0) return idealDir;
+    
+    // Create orthonormal basis around ideal direction
+    VectorFloatTriplet u, v;
+    orthonormalBasis(idealDir, u, v);
+    
+    // Sample uniformly within a cone of half-angle = roughness
+    double phi = 2.0 * M_PI * uniform_random(0, 1);
+    double cosTheta = 1.0 - uniform_random(0, 1) * (1.0 - std::cos(roughness));
+    double sinTheta = std::sqrt(1.0 - cosTheta * cosTheta);
+    
+    // Convert to Cartesian in the local basis
+    VectorFloatTriplet perturbed = u * (sinTheta * std::cos(phi)) 
+                                 + v * (sinTheta * std::sin(phi)) 
+                                 + idealDir * cosTheta;
+    return normalize(perturbed);
+}
 
 VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersection& intersection) {
     Material* material = intersection.material;
@@ -885,17 +932,28 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         return color;
     }
 
-    // Use shading normal for lighting
     VectorFloatTriplet normal = normalize(intersection.shadingNormal);
-
-    // --- Ambient ---
+    
+    // For non-dielectric materials, ensure the normal faces the camera for proper lighting
+    // Dielectric materials handle this differently - they need original normal to detect entering/exiting
+    if (material->type != "dielectric") {
+        if (dotProduct(normal, ray.direction) > 0.0) {
+            normal = -normal;
+        }
+    }
+    
     color += material->ambientReflectance * scene.ambientLight.intensity;
-
     // ==============================
     //     CONDUCTOR (METAL)
     // ==============================
     if (material->type == "conductor") {
-        // Direct specular from point lights (Blinn–Phong, tinted by metal color)
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        double cosTheta = dotProduct(normal, viewDir);
+        double F = fresnelConductor(
+            cosTheta,
+            material->refractionIndex,
+            material->absorptionIndex
+        );
         for (const PointLight& light : scene.pointLights) {
             if (isInShadow(scene, ray, light, intersection)) {
                 continue;
@@ -903,87 +961,182 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
 
             VectorFloatTriplet lightVec = light.position - intersection.point;
             double distanceSq = dotProduct(lightVec, lightVec);
-            double distance = std::sqrt(distanceSq);
+            double distance   = std::sqrt(distanceSq);
             VectorFloatTriplet lightDir = lightVec * (1.0 / distance);
 
             double attenuation = 1.0 / distanceSq;
 
-            VectorFloatTriplet viewDir = normalize(-ray.direction);
+            double NdotL = std::max(0.0, dotProduct(normal, lightDir));
+            if (NdotL <= 0.0) continue;
+
+            VectorFloatTriplet viewDir   = normalize(-ray.direction);
             VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+            double NdotH = std::max(0.0, dotProduct(normal, halfVector));
+            double specularFactor = std::pow(NdotH, material->phongExponent);
 
-            double specularFactor = std::pow(
-                std::max(0.0, dotProduct(normal, halfVector)),
-                material->phongExponent
-            );
-
-            // mirrorReflectance is the metal color (RGB)
             VectorFloatTriplet specular =
-                material->mirrorReflectance * light.intensity *
-                specularFactor * attenuation;
+                material->specularReflectance * light.intensity *
+                (specularFactor * NdotL * attenuation);
 
             color += specular;
         }
 
-        // Environment / scene reflection with Fresnel
-        double cosTheta = dotProduct(-ray.direction, normal);
-        cosTheta = std::max(0.0, std::min(1.0, cosTheta));
+        // ---------------------------
+        //   DIRECT SPECULAR: AREA
+        // ---------------------------
+        for (const AreaLight& light : scene.areaLights) {
+            VectorFloatTriplet lightNormal = normalize(light.normal);
+            VectorFloatTriplet u, v;
+            orthonormalBasis(lightNormal, u, v);
 
-        double F = fresnelConductor(cosTheta,
-                                    material->refractionIndex,
-                                    material->absorptionIndex);
+            double halfSize = light.size * 0.5;
 
-        Ray reflectedRay = reflect(ray, normal, intersection.point, scene.shadowRayEpsilon);
+            double ksi_1 = uniform_random(-halfSize, halfSize);
+            double ksi_2 = uniform_random(-halfSize, halfSize);
+            VectorFloatTriplet samplePoint = light.position + u * ksi_1 + v * ksi_2;
+
+            VectorFloatTriplet toLight = samplePoint - intersection.point;
+            double distanceSq = dotProduct(toLight, toLight);
+            double distance   = std::sqrt(distanceSq);
+            VectorFloatTriplet lightDir = toLight * (1.0 / distance);
+
+            double cosThetaSurf  = dotProduct(normal, lightDir);
+            double cosThetaLight = dotProduct(lightNormal, -lightDir);
+            // Two-sided light: use abs for light side only
+            cosThetaLight = std::abs(cosThetaLight);
+            // Skip if surface is facing away from light
+            if (cosThetaSurf <= 0.0) continue;
+
+            // Shadow ray offset: ensure normal points toward light
+            VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+            if (dotProduct(offsetNormal, lightDir) < 0.0) {
+                offsetNormal = -offsetNormal;
+            }
+            Ray shadowRay{
+                intersection.point + scene.shadowRayEpsilon * offsetNormal,
+                lightDir, ray.depth + 1, true, false, false, ray.time
+            };
+            Intersection shadowHit = intersect(scene, shadowRay);
+            if (shadowHit.hit && shadowHit.distance < distance - scene.shadowRayEpsilon) continue;
+
+            double area = light.size * light.size;
+            VectorFloatTriplet irradiance =
+                light.radiance * (cosThetaSurf * cosThetaLight * area / distanceSq);
+
+            VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+            double NdotH = std::max(0.0, dotProduct(normal, halfVector));
+            double specFactor = std::pow(NdotH, material->phongExponent);
+
+            // Again: irradiance already has cos terms; no extra Fresnel here
+            color += material->mirrorReflectance * irradiance * specFactor;
+        }
+
+        // ---------------------------
+        //   RECURSIVE REFLECTION
+        // ---------------------------
+        Ray reflectedRay = reflect(ray, normal,
+                                    intersection.point,
+                                    scene.shadowRayEpsilon);
+
+        // reflect() already normalizes and increments depth, but let's be safe:
+        reflectedRay.direction = normalize(reflectedRay.direction);
+        reflectedRay.shadowRay  = false;
+        reflectedRay.reflectionRay = true;
+        reflectedRay.refractionRay = false;
+
+        if (material->roughness > 0.0) {
+            reflectedRay.direction =
+                perturbDirection(reflectedRay.direction, material->roughness);
+        }
+
         Intersection reflectionIntersection = intersect(scene, reflectedRay);
         VectorFloatTriplet reflectedColor =
             computePixelColor(scene, reflectedRay, reflectionIntersection);
 
+        // F = std::max(0.0, std::min(1.0, F));
+
         color += F * material->mirrorReflectance * reflectedColor;
+
         return color;
     }
 
     // ==============================
     //     DIELECTRIC (GLASS, etc.)
     // ==============================
-    if (material->type == "dielectric") {
-        double n1 = 1.0;
-        double n2 = material->refractionIndex;
-        bool entering = dotProduct(ray.direction, normal) < 0.0;
-
-        // Flip normal if we’re exiting the medium
+    else if (material->type == "dielectric") {
+        // Always work with a normalized normal
+        VectorFloatTriplet N = normalize(normal);
+    
+        double n1 = 1.0;                          // index of refraction of current medium (air)
+        double n2 = material->refractionIndex;    // index of refraction of the material
+    
+        // Are we entering or exiting?
+        bool entering = dotProduct(ray.direction, N) < 0.0;
+    
         if (!entering) {
-            normal = -normal;
+            // We are inside the medium, heading out:
+            // flip normal so it still opposes the incoming ray
+            N = -N;
             std::swap(n1, n2);
         }
-
-        double cosTheta = dotProduct(-ray.direction, normal);
-        cosTheta = std::max(-1.0, std::min(1.0, cosTheta));
-
-        double F = fresnelDielectric(cosTheta, n1, n2);
-
-        // Reflection
-        Ray reflectedRay = reflect(ray, normal, intersection.point, scene.shadowRayEpsilon);
+    
+        // cos(theta_i) for Fresnel (angle between -wi and N)
+        double cosThetaI = dotProduct(-ray.direction, N);
+        cosThetaI = std::max(-1.0, std::min(1.0, cosThetaI));
+    
+        // Fresnel reflectance for dielectrics
+        double F = fresnelDielectric(cosThetaI, n1, n2);
+    
+        // ---------------------------
+        //   REFLECTION RAY
+        // ---------------------------
+        Ray reflectedRay = reflect(ray, N, intersection.point, scene.shadowRayEpsilon);
+    
+        // Optional glossiness on reflection
+        if (material->roughness > 0.0) {
+            reflectedRay.direction = perturbDirection(reflectedRay.direction, material->roughness);
+        }
+    
         Intersection reflectionIntersection = intersect(scene, reflectedRay);
         VectorFloatTriplet reflectedColor =
             computePixelColor(scene, reflectedRay, reflectionIntersection);
-
-        // Refraction
+    
+        // If we are effectively in total internal reflection (F ~ 1), skip refraction
+        const double TIR_EPS = 1e-4;
+        if (F >= 1.0 - TIR_EPS) {
+            color += reflectedColor;    // pure reflection
+            return color;
+        }
+    
+        // ---------------------------
+        //   REFRACTION RAY
+        // ---------------------------
         bool totalInternalReflection = false;
-        Ray refractedRay = refract(ray, normal, n1, n2,
-                                   intersection.point,
-                                   scene.shadowRayEpsilon,
-                                   totalInternalReflection);
-
+        Ray refractedRay = refract(
+            ray,
+            N,
+            n1,
+            n2,
+            intersection.point,
+            scene.shadowRayEpsilon,
+            totalInternalReflection
+        );
+    
         if (totalInternalReflection) {
-            // Pure reflection if we can’t refract
+            // Numerical safety net — should be rare if we handled F ~ 1 above
             color += reflectedColor;
             return color;
         }
-
+    
+        if (material->roughness > 0.0) {
+            refractedRay.direction = perturbDirection(refractedRay.direction, material->roughness);
+        }
+    
         Intersection refractionIntersection = intersect(scene, refractedRay);
         VectorFloatTriplet refractedColor =
             computePixelColor(scene, refractedRay, refractionIntersection);
-
-        // Beer–Lambert absorption when travelling inside the medium
+    
+        // Beer–Lambert absorption for the segment inside the medium
         if (entering && refractionIntersection.hit) {
             double distance = refractionIntersection.distance;
             VectorFloatTriplet absorbance = material->absorptionCoefficient * distance;
@@ -994,7 +1147,8 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
             };
             refractedColor = refractedColor * transmittance;
         }
-
+    
+        // Fresnel mix between reflection and refraction
         color += F * reflectedColor + (1.0 - F) * refractedColor;
         return color;
     }
@@ -1010,6 +1164,12 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
                                    intersection.shadingNormal,
                                    intersection.point,
                                    scene.shadowRayEpsilon);
+        
+        // Apply roughness perturbation to mirror reflection
+        if (material->roughness > 0.0) {
+            reflectedRay.direction = perturbDirection(reflectedRay.direction, material->roughness);
+        }
+        
         Intersection reflectionIntersection = intersect(scene, reflectedRay);
         VectorFloatTriplet mirrorColor =
             computePixelColor(scene, reflectedRay, reflectionIntersection);
@@ -1030,24 +1190,82 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         double attenuation = 1.0 / distanceSq;
 
         // Diffuse
-        double diffuseFactor = std::max(0.0, dotProduct(normal, lightDir));
+        double NdotL = std::max(0.0, dotProduct(normal, lightDir));
+        if (NdotL <= 0.0) continue;
+
         VectorFloatTriplet diffuse =
             material->diffuseReflectance * light.intensity *
-            diffuseFactor * attenuation;
+            (NdotL * attenuation);
 
         // Blinn–Phong specular
-        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet viewDir   = normalize(-ray.direction);
         VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
-        double specularFactor = std::pow(
-            std::max(0.0, dotProduct(normal, halfVector)),
-            material->phongExponent
-        );
+        double NdotH = std::max(0.0, dotProduct(normal, halfVector));
+        double specularFactor = std::pow(NdotH, material->phongExponent);
+
+        // Include NdotL in specular term
         VectorFloatTriplet specular =
             material->specularReflectance * light.intensity *
-            specularFactor * attenuation;
+            (specularFactor * NdotL * attenuation);
 
         color += diffuse + specular;
     }
+
+    for (const AreaLight& light : scene.areaLights) {
+        // Create orthonormal basis for the light (u, v span the light surface)
+        VectorFloatTriplet lightNormal = normalize(light.normal);
+        VectorFloatTriplet u, v;
+        orthonormalBasis(lightNormal, u, v);
+
+        // Sample random point on area light, centered at light.position
+        double halfSize = light.size / 2.0;
+        double ksi_1 = uniform_random(-halfSize, halfSize);
+        double ksi_2 = uniform_random(-halfSize, halfSize);
+        VectorFloatTriplet samplePoint = light.position + u * ksi_1 + v * ksi_2;
+
+        // Direction from surface to light sample
+        VectorFloatTriplet toLight = samplePoint - intersection.point;
+        double distanceSq = dotProduct(toLight, toLight);
+        double distance = std::sqrt(distanceSq);
+        VectorFloatTriplet lightDir = toLight * (1.0 / distance);
+
+        // Cosine at surface - check if light is behind surface
+        double cosTheta = dotProduct(normal, lightDir);
+        
+        // Cosine at light - two-sided area light uses absolute value
+        double cosThetaLight = std::abs(dotProduct(lightNormal, -lightDir));
+        
+        // Skip if surface is facing away from light
+        if (cosTheta <= 0.0) continue;
+
+        // Shadow ray offset: ensure normal points toward light
+        VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+        if (dotProduct(offsetNormal, lightDir) < 0.0) {
+            offsetNormal = -offsetNormal;
+        }
+        Ray shadowRay{
+            intersection.point + scene.shadowRayEpsilon * offsetNormal,
+            lightDir, 0, true, false, false, 0.0
+        };
+        Intersection shadowHit = intersect(scene, shadowRay);
+        if (shadowHit.hit && shadowHit.distance < distance - scene.shadowRayEpsilon) continue;
+
+        // Area light irradiance: L * cos(θ_surface) * |cos(θ_light)| * area / r²
+        double area = light.size * light.size;
+        VectorFloatTriplet irradiance = light.radiance * (cosTheta * cosThetaLight * area / distanceSq);
+
+        // Diffuse
+        VectorFloatTriplet diffuse = material->diffuseReflectance * irradiance;
+
+        // Blinn-Phong specular
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+        double specFactor = std::pow(std::max(0.0, dotProduct(normal, halfVector)), material->phongExponent);
+        VectorFloatTriplet specular = material->specularReflectance * irradiance * specFactor;
+
+        color += diffuse + specular;
+    }
+
 
     return color;
 }
@@ -1075,10 +1293,16 @@ VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Interse
 // =======================================================
 //    SHADOW TEST
 // =======================================================
-bool isInShadow(const Scene& scene, Ray& /*ray*/, const PointLight& light, const Intersection& intersection) {
+bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection) {
+    VectorFloatTriplet lightDir = normalize(light.position - intersection.point);
+    // Use geometric normal and ensure it points in the same hemisphere as the light
+    VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+    if (dotProduct(offsetNormal, lightDir) < 0.0) {
+        offsetNormal = -offsetNormal;
+    }
     Ray shadowRay{
-        intersection.point + scene.shadowRayEpsilon * intersection.geometricNormal,
-        normalize(light.position - intersection.point),
+        intersection.point + scene.shadowRayEpsilon * offsetNormal,
+        lightDir,
         0,
         true,   // shadow ray
         false,  // reflection ray
@@ -1100,8 +1324,13 @@ bool isInShadow(const Scene& scene, Ray& /*ray*/, const PointLight& light, const
 //    FRESNEL FUNCTIONS
 // =======================================================
 double fresnelConductor(double cosTheta, double n, double k) {
+    // Clamp cosine to [0,1] (we only care about the front-facing side here)
     cosTheta = std::max(0.0, std::min(1.0, cosTheta));
     double cosThetaSq = cosTheta * cosTheta;
+
+    // Ensure physically meaningful parameters
+    n = std::max(n, 0.0);
+    k = std::max(k, 0.0);
 
     double n2 = n * n;
     double k2 = k * k;
@@ -1109,36 +1338,49 @@ double fresnelConductor(double cosTheta, double n, double k) {
 
     double twoNCos = 2.0 * n * cosTheta;
 
-    double RsNum = (n2PlusK2 - twoNCos + cosThetaSq);
-    double RsDen = (n2PlusK2 + twoNCos + cosThetaSq);
+    // Perpendicular polarization
+    double RsNum = n2PlusK2 - twoNCos + cosThetaSq;
+    double RsDen = n2PlusK2 + twoNCos + cosThetaSq;
     double Rs = RsNum / RsDen;
 
-    double RpNum = (n2PlusK2 * cosThetaSq - twoNCos + 1.0);
-    double RpDen = (n2PlusK2 * cosThetaSq + twoNCos + 1.0);
+    // Parallel polarization
+    double RpNum = n2PlusK2 * cosThetaSq - twoNCos + 1.0;
+    double RpDen = n2PlusK2 * cosThetaSq + twoNCos + 1.0;
     double Rp = RpNum / RpDen;
 
     double R = 0.5 * (Rs + Rp);
-    if (R < 0.0) R = 0.0;
-    if (R > 1.0) R = 1.0;
+
+    // Final safety clamp against numeric noise
     return R;
 }
 
-double fresnelDielectric(double cosTheta, double n1, double n2) {
-    cosTheta = std::max(-1.0, std::min(1.0, cosTheta));
-    double eta = n1 / n2;
-    double sinThetaTSq = eta * eta * (1.0 - cosTheta * cosTheta);
+double fresnelDielectric(double cosThetaI, double n1, double n2) {
+    // Clamp and make sure indices are positive
+    cosThetaI = std::max(-1.0, std::min(1.0, cosThetaI));
+    n1 = std::max(n1, 0.0);
+    n2 = std::max(n2, 0.0);
 
+    // We use the magnitude of cosθ_i here; sign is handled by normal flipping
+    double absCosThetaI = std::fabs(cosThetaI);
+
+    double eta = n1 / n2;
+    double sinThetaTSq = eta * eta * (1.0 - absCosThetaI * absCosThetaI);
+
+    // Total internal reflection
     if (sinThetaTSq >= 1.0) {
-        // Total internal reflection
         return 1.0;
     }
 
-    double cosPhi = std::sqrt(std::max(0.0, 1.0 - sinThetaTSq));
+    double cosThetaT = std::sqrt(std::max(0.0, 1.0 - sinThetaTSq));
 
-    double rPerp = (n1 * cosTheta - n2 * cosPhi) / (n1 * cosTheta + n2 * cosPhi);
-    double rPara = (n2 * cosTheta - n1 * cosPhi) / (n2 * cosTheta + n1 * cosPhi);
+    double rPerp = (n1 * absCosThetaI - n2 * cosThetaT) /
+                   (n1 * absCosThetaI + n2 * cosThetaT);
 
-    return 0.5 * (rPerp * rPerp + rPara * rPara);
+    double rPara = (n2 * absCosThetaI - n1 * cosThetaT) /
+                   (n2 * absCosThetaI + n1 * cosThetaT);
+
+    double R = 0.5 * (rPerp * rPerp + rPara * rPara);
+    return std::max(0.0, std::min(1.0, R));
 }
 
 // =======================================================

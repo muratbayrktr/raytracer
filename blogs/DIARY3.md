@@ -78,3 +78,39 @@ After I implement the sampling the speed kinda dropped but I will take care of i
 I now tried some scenes with brushed metal and area light. I thought area light is working okay-ish but it doesn't create a brightness on the ceiling. Similarly conductor and dielectrics are kinda off when considering the area light. Something is not adding up but I'll find it.
 
 
+## 2025-11-28
+
+Today I finally tracked down the infamous "green glass" bug. Transformed dielectric objects were rendering with this sickly green tint instead of proper glass refraction. Classic.
+
+The culprit? A sneaky normal-flipping optimization that was "helping" everywhere except where it mattered most. In two places in `utils.cpp`, I had code like:
+
+```cpp
+// Ensure normals face the camera (critical for mirror reflections and lighting)
+if (dotProduct(worldGeomNormal, ray.direction) > 0.0) {
+    worldGeomNormal = -worldGeomNormal;
+    worldShadingNormal = -worldShadingNormal;
+}
+```
+
+Looks innocent, right? Even has a helpful comment. But here's the thing - dielectrics use this check to determine if we're entering or exiting the glass:
+
+```cpp
+bool entering = dotProduct(ray.direction, N) < 0.0;
+```
+
+When you always flip the normal to face the camera, `dotProduct(ray.direction, N)` is ALWAYS negative. So `entering` is ALWAYS true. The refracted ray traveling inside the glass thinks it's still entering, uses the wrong refractive indices, computes garbage directions, and boom - green artifacts everywhere.
+
+The fix was simple once I understood the problem:
+1. Removed the automatic normal flipping in both `rayHitsMesh` (for transformed objects) and the post-processing section (for smooth shaded meshes)
+2. Added the normal flip specifically in `computeShading()` but ONLY for non-dielectric materials
+
+Also found a bonus bug while I was at it - `rayHitsSphere` was using `min(t1, t2)` for sphere intersection which completely breaks when the ray starts inside the sphere (like, you know, when you're inside a glass sphere after refraction). Fixed that too by properly selecting the closest positive t value.
+
+Moral of the story: what helps opaque materials can absolutely destroy transparent ones. Dielectrics are special snowflakes and they need their original normals to know which side they're on.
+
+#### Mesh Scaling Bug
+
+Today I tracked down why scaled meshes were “disappearing” from the render while still casting shadows.
+Root cause: for transformed meshes I was using the global world-space t_min as the intersection cutoff in object space. When the mesh was scaled (especially down), the object-space hit distance became larger than world t_min, so all primary ray hits were rejected.
+
+Fix: for transformed meshes I introduced a separate local t_min in object space (initialized to inf) and kept the incoming t_min only as original_t_min in world space. After intersecting in object space and back-transforming the hit point, I compare the resulting worldDistance with original_t_min and update the global t_min only if this hit is closer. This decouples object-space intersection distances from world-space pruning and prevents scaled meshes from disappearing.

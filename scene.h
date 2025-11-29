@@ -174,7 +174,7 @@ namespace scene {
         VectorFloatTriplet backgroundColor;
         double shadowRayEpsilon;
         double intersectionTestEpsilon;
-        int maxRecursionDepth = 0;
+        int maxRecursionDepth = 5;
         std::vector<Camera> cameras;
         AmbientLight ambientLight;
         std::vector<PointLight> pointLights;
@@ -282,7 +282,7 @@ namespace scene {
         VectorFloatTriplet shadingNormal;
         
 
-        enum class Kind { None, Plane, Sphere, Triangle, Mesh } kind = Kind::None;
+        enum class Kind { None, Plane, Sphere, Triangle, Mesh, AreaLight } kind = Kind::None;
         int containerIndex = -1;
         int faceIndex = -1;
         

@@ -54,6 +54,9 @@ Ray refract(Ray& ray, const VectorFloatTriplet normal, double n1, double n2, Vec
 /* Shadow */
 bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection);
 
+/* Utility Functions */
+void orthonormalBasis(const VectorFloatTriplet& n, VectorFloatTriplet& u, VectorFloatTriplet& v);
+
 void printPerfStats();
 void printPerfStatsInline();
 
