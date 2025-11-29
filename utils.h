@@ -25,15 +25,22 @@ bool hasNegativeScale(const Matrix4x4& m);
 void clamp(VectorFloatTriplet& color, int min, int max);
 
 /* Ray Functions */
-Ray castRay(const Camera& camera, double x, double y, int width, int height);
+Ray castRay(const Camera& camera,
+            double x,
+            double y,
+            int width,
+            int height,
+            double time = 0.0,
+            double random1 = 0.0,
+            double random2 = 0.0);
 
 /* Intersection Functions */
 Intersection intersect(const Scene& scene, Ray& ray); 
 
-bool rayHitsPlane(Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, int planeIndex);
-bool rayHitsSphere(Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, int sphereIndex);
-bool rayHitsTriangle(Ray& ray, const VectorIntTriplet& face, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, double intersectionTestEpsilon, double determinantT, Material* material, bool enableBackFaceCulling, int containerIndex, int faceIndex);
-bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& vertices, const vector<double>& determinants, double& t_min, Intersection& intersection, double intersectionTestEpsilon, scene::MeshBVH* bvh, bool enableBackFaceCulling, int meshIndex, const Matrix4x4* transformMatrix = nullptr, const Matrix4x4* inverseTransformMatrix = nullptr, const Matrix4x4* normalMatrix = nullptr, const Scene* scene = nullptr, Material* materialOverride = nullptr, const scene::AABB* worldSpaceBoundsOverride = nullptr);
+bool rayHitsPlane(Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, int planeIndex, double minDistance = 0.0);
+bool rayHitsSphere(Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, int sphereIndex, double minDistance = 0.0);
+bool rayHitsTriangle(Ray& ray, const VectorIntTriplet& face, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, double intersectionTestEpsilon, double determinantT, Material* material, bool enableBackFaceCulling, int containerIndex, int faceIndex, double minDistance = 0.0);
+bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& vertices, const vector<double>& determinants, double& t_min, Intersection& intersection, double intersectionTestEpsilon, scene::MeshBVH* bvh, bool enableBackFaceCulling, int meshIndex, const Matrix4x4* transformMatrix = nullptr, const Matrix4x4* inverseTransformMatrix = nullptr, const Matrix4x4* normalMatrix = nullptr, const Scene* scene = nullptr, Material* materialOverride = nullptr, const scene::AABB* worldSpaceBoundsOverride = nullptr, double minDistance = 0.0);
 
 /* Pixel Color Functions */
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection);

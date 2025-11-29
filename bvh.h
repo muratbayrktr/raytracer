@@ -79,7 +79,8 @@ namespace scene {
             double intersectionTestEpsilon,
             bool enableBackFaceCulling,
             int meshIndex,
-            Material* materialOverride = nullptr
+            Material* materialOverride = nullptr,
+            double minDistance = 0.0
         ) const;
         
         // Get the root bounding box (in local space)

@@ -1,5 +1,8 @@
 all:
-	g++ *.cpp -O3 -o raytracer -std=c++11 -lm -lpthread 
+	g++ *.cpp -O3 -o raytracer -std=c++11 -lm -lpthread -w
+
+gui:
+	g++ *.cpp -O3 -o raytracer -std=c++11 -lm -lpthread -w `pkg-config --cflags --libs sdl3`
 
 clean:
 	rm raytracer

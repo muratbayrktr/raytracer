@@ -12,6 +12,9 @@
 #include "happly.h"
 #include "bvh.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 using json = nlohmann::json;
 
 #define VERBOSE 1
@@ -511,9 +514,9 @@ scene::Material scene::parseMaterial(const json& materialData) {
     // Parse MirrorReflectance if present (independent of _type)
     if (materialData.contains("MirrorReflectance") && !materialData["MirrorReflectance"].is_null()) {
         newMaterial.mirrorReflectance = parseTriplet<VectorFloatTriplet>(materialData["MirrorReflectance"]);
-        // Set isMirror if mirror reflectance is non-zero
+        // disabled this because we are only setting mirrors for type "mirror"
         if (newMaterial.mirrorReflectance.x > 0.0 || newMaterial.mirrorReflectance.y > 0.0 || newMaterial.mirrorReflectance.z > 0.0)  {
-            newMaterial.isMirror = true;
+            // newMaterial.isMirror = true;
         }
     }
     
@@ -802,27 +805,16 @@ void scene::Scene::getSummary() {
 }
 
 void scene::Scene::writePPM(const std::string& filename, unsigned char* image, int width, int height) {
-    // @TODO: Remove following lines to write png file, I did this for debugging
-    size_t dotPos = filename.find_last_of('.');
-    std::string ppmFilename;
+    std::string outFilename = filename;
+    size_t dotPos = outFilename.find_last_of('.');
     if (dotPos != std::string::npos) {
-        ppmFilename = filename.substr(0, dotPos) + ".ppm";
+        outFilename = outFilename.substr(0, dotPos) + ".png";
+    } else {
+        outFilename += ".png";
     }
-    FILE *outfile;
-    if ((outfile = fopen(ppmFilename.c_str(), "w")) == NULL) {
-        throw std::runtime_error("Error: The ppm file cannot be opened for writing: " + filename);
+    if (!stbi_write_png(outFilename.c_str(), width, height, 3, image, width * 3)) {
+        throw std::runtime_error("Error: Failed to write PNG file: " + outFilename);
     }
-    fprintf(outfile, "P3\n%d %d\n255\n", width, height);
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            for (int c = 0; c < 3; c++) {
-                fprintf(outfile, "%u ", image[(y * width + x) * 3 + c]);
-            }
-        }
-        fprintf(outfile, "\n");
-    }
-    fprintf(outfile, "\n");
-    fclose(outfile);
 }
 
 std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyFile, std::vector<scene::VectorFloatTriplet>& vertexList) {
@@ -830,23 +822,38 @@ std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyF
         throw std::runtime_error("Error: PLY file does not exist: " + plyFile);
     }
     happly::PLYData plyData(plyFile);
-    
+
     // Remember how many vertices we already have so we can offset indices
     // from the PLY file to point into the combined vertex list.
     size_t baseIndex = vertexList.size();
 
+    // Get faces from the PLY file. The underlying library (`happly`) already
+    // handles both the standard `vertex_indices` and the common variant
+    // `vertex_index` property names for face definitions.
     std::vector<std::vector<unsigned long>> faces = plyData.getFaceIndices();
-    std::vector<scene::VectorIntTriplet> facesVector = std::vector<scene::VectorIntTriplet>(faces.size());
-    for (size_t i = 0; i < faces.size(); i++) {
-        auto face = faces[i];
-        scene::VectorIntTriplet faceVector;
-        // PLY indices are 0-based; shift them by baseIndex so they refer to
-        // the vertices we append below.
-        faceVector.x = static_cast<int>(baseIndex + face[0]);
-        faceVector.y = static_cast<int>(baseIndex + face[1]);
-        faceVector.z = static_cast<int>(baseIndex + face[2]);
-        facesVector[i] = faceVector;
+
+    // Triangulate faces in case some polygons have more than 3 vertices
+    // (e.g., quads in cube meshes). We use a simple fan triangulation:
+    //   (v0, v1, v2), (v0, v2, v3), ...
+    std::vector<scene::VectorIntTriplet> facesVector;
+    facesVector.reserve(faces.size()); // lower bound; may grow if we split quads/ngons
+    for (const auto& face : faces) {
+        if (face.size() < 3) {
+            // Degenerate face; skip it.
+            continue;
+        }
+
+        for (size_t k = 1; k + 1 < face.size(); ++k) {
+            scene::VectorIntTriplet tri;
+            // PLY indices are 0-based; shift them by baseIndex so they refer to
+            // the vertices we append below.
+            tri.x = static_cast<int>(baseIndex + face[0]);
+            tri.y = static_cast<int>(baseIndex + face[k]);
+            tri.z = static_cast<int>(baseIndex + face[k + 1]);
+            facesVector.push_back(tri);
+        }
     }
+
     std::vector<std::array<double, 3>> vertices = plyData.getVertexPositions();
     std::vector<scene::VectorFloatTriplet> verticesVector = std::vector<scene::VectorFloatTriplet>(vertices.size());
     for (size_t i = 0; i < vertices.size(); i++) {

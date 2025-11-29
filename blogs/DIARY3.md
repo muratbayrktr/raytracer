@@ -114,3 +114,55 @@ Today I tracked down why scaled meshes were “disappearing” from the render w
 Root cause: for transformed meshes I was using the global world-space t_min as the intersection cutoff in object space. When the mesh was scaled (especially down), the object-space hit distance became larger than world t_min, so all primary ray hits were rejected.
 
 Fix: for transformed meshes I introduced a separate local t_min in object space (initialized to inf) and kept the incoming t_min only as original_t_min in world space. After intersecting in object space and back-transforming the hit point, I compare the resulting worldDistance with original_t_min and update the global t_min only if this hit is closer. This decouples object-space intersection distances from world-space pruning and prevents scaled meshes from disappearing.
+
+## 2025-11-29
+
+Today I implemented motion blur. The parsing was already done - each object has `motionBlur` and `hasMotionBlur` fields, and the `Ray` struct already had a `time` field that was just sitting there unused.
+
+The idea is straightforward: motion blur is a world-space translation that happens AFTER all other transformations. At time t=0, the object is at its transformed position. At t=1, it's translated by the full motionBlur vector. Each sample gets a random time in [0,1], and all secondary rays (reflections, refractions, shadows) keep the same time as their parent ray.
+
+Implementation approach - instead of actually moving objects (expensive), I offset the ray in the opposite direction:
+1. Object at time t is at position P + t*motionBlur
+2. Equivalently, test ray with origin shifted by -t*motionBlur against object at P
+3. If hit, shift hit point back by +t*motionBlur
+
+The changes were pretty localized:
+- `castRay` now accepts a time parameter and stores it in the ray
+- `reflect` and `refract` propagate time to secondary rays
+- Shadow rays in `isInShadow` and `computeShading` also propagate time
+- Added two helper functions: `applyMotionBlurToRay` and `correctHitPointForMotionBlur`
+- In `intersect`, for each object type (planes, triangles, meshes, spheres, mesh instances) I create an offset ray if the object has motion blur, do the normal intersection test, then correct the hit point if there was a hit
+- In `raytracer.cpp`, each sample generates `sampleTime = uniform_random(0.0, 1.0)` and passes it to `__compute`
+
+One subtlety: since motion blur is just a translation, the distance along the ray is unchanged. So t_min comparisons work correctly even when different objects have different motion blur offsets.
+
+The AABB early rejection for mesh instances uses the offset ray but against the static bounding box - this is conservative (might miss some early rejections) but correct. Could optimize later by expanding the AABB by the motion blur extent.
+
+On top of that, I finally fixed an annoying near-plane / image-plane bug. The all-intersection path and BVH traversal were happily reporting hits that were technically between the camera origin and the image plane when `camera.nearDistance` was small, which meant some objects could “pop” in front of the film even though they should have been clipped. The first attempt at fixing this used `camera.nearDistance` directly as a radial cutoff (distance from the camera), which behaved like clipping with a sphere and produced that weird “growing circle” effect when I changed nearDistance.
+
+The real fix was to compute, for each primary ray, where that specific ray actually crosses the image plane and use that as the per-ray minimum distance. In `intersect()` I now do:
+
+```cpp
+double minDistance = 0.0;
+bool isPrimaryRay = (ray.depth == 0 && !ray.shadowRay && !ray.reflectionRay && !ray.refractionRay);
+if (isPrimaryRay && !scene.cameras.empty()) {
+    const Camera& cam = scene.cameras[scene.currentCameraIndex];
+    VectorFloatTriplet n = normalize(cam.gaze);
+    VectorFloatTriplet e = cam.position;
+    VectorFloatTriplet o = ray.origin;
+    VectorFloatTriplet d = normalize(ray.direction);
+
+    double denom = dotProduct(d, n);
+    if (std::fabs(denom) > 1e-9) {
+        double numer = cam.nearDistance - dotProduct(o - e, n);
+        double t_plane = numer / denom;
+        if (t_plane > 0.0) {
+            minDistance = t_plane;
+        }
+    }
+}
+```
+
+Then I thread this `minDistance` into `rayHitsPlane`, `rayHitsSphere`, `rayHitsTriangle`, `rayHitsMesh`, and `MeshBVH::traverse`. For untransformed primitives/meshes, I reject hits with `t < minDistance` (so anything before the image plane along that ray is ignored). For transformed ones (where local-space t doesn’t match world-space distance), I let the code compute the world-space hit point first and then discard any candidate whose world-space distance along the ray is less than `minDistance` before updating `t_min`. Secondary rays (shadows, reflections, refractions) still see everything from their own origin since they don’t use the camera’s image plane for clipping.
+
+On top of that I added an “actual raytracer-style” progressive preview for multi-sampling. Instead of doing all samples per pixel in one go, I can now iterate **level-wise** over the sample index: for each sample `k`, I sweep all pixels, accumulate into a floating-point `accum` buffer, and periodically (every few samples) normalize and dump the current state. The precomputed `VectorFloatPenta` per pixel/sample (jitter, time, and extra random dims) made this trivial to wire up – no RNG cost in the hot path. I also wrapped a small SDL-based GUI around the iterative path so that when it’s enabled, the renderer opens a window at the image resolution and re-blits the current `accum` buffer each time I write the `_iterative.png` snapshot. Net effect: I can literally watch the image converge sample-by-sample like a “real” progressive raytracer, while still keeping the old one-shot sampling mode as the default.

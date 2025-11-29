@@ -111,7 +111,8 @@ bool MeshBVH::traverse(
     double intersectionTestEpsilon,
     bool enableBackFaceCulling,
     int meshIndex,
-    Material* materialOverride
+    Material* materialOverride,
+    double minDistance
 ) const {
     if (nodes.empty()) {
         return false;
@@ -157,7 +158,8 @@ bool MeshBVH::traverse(
                         materialToUse,
                         enableBackFaceCulling,
                         meshIndex,
-                        faceIndex)) {
+                        faceIndex,
+                        minDistance)) {
                     hit = true;
                     intersection.kind = Intersection::Kind::Mesh;
                 }

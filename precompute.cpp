@@ -124,11 +124,12 @@ void precomputeCameraMeshDeterminant(
 
 double uniform_random(double min, double max) {
     static std::mt19937 gen(std::random_device{}());
-    std::uniform_real_distribution<double> dist(min, max);
-    return dist(gen);
+    static std::uniform_real_distribution<double> dist01(0.0, 1.0);
+    double r = dist01(gen);
+    return min + (max - min) * r;
 }
 
-void precomputeSamples(int numSamples, int width, int height, VectorFloatTriplet* samples) {
+void precomputeSamples(int numSamples, int width, int height, VectorFloatPenta* samples) {
     // numSamples is a perfect square (1, 4, 9, 16, etc.), so calculate samples per dimension
     int samplesPerDimension = static_cast<int>(sqrt(numSamples));
     int j = 0;
@@ -137,10 +138,16 @@ void precomputeSamples(int numSamples, int width, int height, VectorFloatTriplet
         for (int x = 0; x < width; x++) {
             for (int s = 0; s < samplesPerDimension; s++) {
                 for (int t = 0; t < samplesPerDimension; t++) {
-                    ksi_1 = uniform_random(0, 1);
-                    ksi_2 = uniform_random(0, 1);
+                    ksi_1 = uniform_random(0.0, 1.0);
+                    ksi_2 = uniform_random(0.0, 1.0);
+                    // Jittered subpixel offsets in [0,1) for x and y
                     samples[j].x = (t + ksi_1) / samplesPerDimension;
                     samples[j].y = (s + ksi_2) / samplesPerDimension;
+                    // Motion blur time sample in [0,1)
+                    samples[j].z = uniform_random(0.0, 1.0);
+                    // Extra random dimensions reused for lens / roughness / area lights
+                    samples[j].w = uniform_random(0.0, 1.0);
+                    samples[j].v = uniform_random(0.0, 1.0);
                     j++;
                 }
             }

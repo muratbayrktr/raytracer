@@ -22,9 +22,14 @@ namespace scene {
         int x, y;
    };
 
-    struct VectorFloatTriplet {
+   struct VectorFloatTriplet {
         double x, y, z;
-    };
+   };
+
+   // 5D float vector for precomputed sample dimensions (jitter, time, lens, etc.)
+   struct VectorFloatPenta {
+        double x, y, z, w, v;
+   };
 
     struct VectorIntTriplet {
         int x, y, z;
@@ -88,7 +93,11 @@ namespace scene {
         int numSamples = 1;  // Perfect square (1, 4, 16, etc.) for jittered sampling
         double apertureSize = 0.0;  // 0 means no depth-of-field
         double focusDistance = 0.0;  // Focus distance for depth-of-field
-        VectorFloatTriplet* samples = nullptr;
+        // Per-pixel per-sample precomputed random dimensions:
+        //   x, y : subpixel jitter in [0,1)
+        //   z    : motion blur time in [0,1)
+        //   w, v : extra random dims reused for lens/roughness/area lights
+        VectorFloatPenta* samples = nullptr;
     };
 
     struct PointLight {
@@ -261,17 +270,41 @@ namespace scene {
         bool shadowRay;
         bool reflectionRay;
         bool refractionRay;
-        double time;  // Time value for motion blur (0.0 to 1.0)
+        double time;      // Time value for motion blur (0.0 to 1.0)
+        double random1;   // Precomputed random in [0,1] (lens/roughness/area light)
+        double random2;   // Precomputed random in [0,1] (lens/roughness/area light)
         
         // Default constructor
-        Ray() : origin({0, 0, 0}), direction({0, 0, 0}), depth(0), 
-                shadowRay(false), reflectionRay(false), refractionRay(false), time(0.0) {}
+        Ray()
+            : origin({0, 0, 0}),
+              direction({0, 0, 0}),
+              depth(0),
+              shadowRay(false),
+              reflectionRay(false),
+              refractionRay(false),
+              time(0.0),
+              random1(0.0),
+              random2(0.0) {}
         
         // Constructor with all parameters
-        Ray(const VectorFloatTriplet& o, const VectorFloatTriplet& d, int dep, 
-            bool shadow, bool reflection, bool refraction, double t)
-            : origin(o), direction(d), depth(dep), shadowRay(shadow), 
-              reflectionRay(reflection), refractionRay(refraction), time(t) {}
+        Ray(const VectorFloatTriplet& o,
+            const VectorFloatTriplet& d,
+            int dep, 
+            bool shadow,
+            bool reflection,
+            bool refraction,
+            double t,
+            double r1 = 0.0,
+            double r2 = 0.0)
+            : origin(o),
+              direction(d),
+              depth(dep),
+              shadowRay(shadow), 
+              reflectionRay(reflection),
+              refractionRay(refraction),
+              time(t),
+              random1(r1),
+              random2(r2) {}
     };
 
     struct Intersection {
@@ -297,7 +330,14 @@ namespace scene {
         bool isMultiThreaded;
         bool useBVH;
         bool enableBackFaceCulling;
-        Args() : isMultiThreaded(true), useBVH(false), enableBackFaceCulling(true) {}
+        bool iterativeSampling;
+        bool useGUI;
+        Args()
+            : isMultiThreaded(true),
+              useBVH(false),
+              enableBackFaceCulling(true),
+              iterativeSampling(false),
+              useGUI(false) {}
     };
 }
 
