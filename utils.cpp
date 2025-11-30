@@ -388,8 +388,8 @@ bool rayHitsTriangle(
     Ray& ray, 
     const VectorIntTriplet& face, 
     const vector<VectorFloatTriplet>& vertices, 
-    double& t_min, 
-    Intersection& intersection, 
+    double& t_min,
+    Intersection& intersection,
     double intersectionTestEpsilon, 
     double determinantT, 
     Material* material,
@@ -455,18 +455,30 @@ bool rayHitsTriangle(
             + e1z * (e2x * ry - e2y * rx);
     // }
     double t = determinantT * invDet;
-    if (t < intersectionTestEpsilon) return false;
+    if (t < intersectionTestEpsilon) {
+#if PROFILE_PERF
+        auto t_tri_end = std::chrono::high_resolution_clock::now();
+        g_timeTriangleTest += std::chrono::duration_cast<std::chrono::nanoseconds>(t_tri_end - t_tri_start).count();
+#endif
+        return false;
+    }
 
-    // Near-plane clipping for primary camera rays: ignore hits closer than minDistance
-    if (t < minDistance) return false;
+    // Near-plane clipping for primary camera rays (in the current ray's metric)
+    if (t < minDistance) {
+#if PROFILE_PERF
+        auto t_tri_end = std::chrono::high_resolution_clock::now();
+        g_timeTriangleTest += std::chrono::duration_cast<std::chrono::nanoseconds>(t_tri_end - t_tri_start).count();
+#endif
+        return false;
+    }
 
-    if(t < t_min) {
+    if (t < t_min) {
         t_min = t;
         intersection.hit = true;
         intersection.distance = t;
         intersection.point = a + beta * (b - a) + gamma * (c - a);
-        intersection.geometricNormal = geometricNormal;      // Store geometric normal
-        intersection.shadingNormal = geometricNormal;      // Default shading normal (will be updated for smooth shading)
+        intersection.geometricNormal = geometricNormal;   // geometric normal
+        intersection.shadingNormal = geometricNormal;     // default shading normal
         intersection.beta = beta;
         intersection.gamma = gamma;
         intersection.material = material;
@@ -511,33 +523,84 @@ bool rayHitsMesh(
     
     bool hasTransform = (mesh.hasTransformation || transformMatrix != nullptr);
 
-    double original_t_min = t_min;
-
-    // Local t_min for intersection tests
-    double local_t_min = hasTransform
-    ? std::numeric_limits<double>::max() : t_min;
-    
 #if PROFILE_PERF
     if (hasTransform) g_transformedMeshCalls++;
 #endif
     
     // Use material override if provided (for instances), otherwise use mesh's material
     Material* materialToUse = materialOverride ? materialOverride : mesh.material;
-    
+
+    // ---------------------------
+    // UNTRANSFORMED MESH PATH
+    // ---------------------------
     if (!hasTransform) {
+        bool hit = false;
+
+        // BVH-accelerated path
         if (bvh != nullptr) {
 #if PROFILE_PERF
             g_bvhTraversals++;
 #endif
-            return bvh->traverse(ray, mesh, vertices, determinants, local_t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex, materialToUse, minDistance);
+            double local_t_min = std::numeric_limits<double>::max();
+            Intersection localIntersection;
+
+            bool localHit = bvh->traverse(
+                ray,
+                mesh,
+                vertices,
+                determinants,
+                local_t_min,
+                localIntersection,
+                intersectionTestEpsilon,
+                enableBackFaceCulling,
+                meshIndex,
+                materialToUse,
+                minDistance
+            );
+
+            if (localHit) {
+                // localIntersection is already in world space because we used the world ray
+                double worldDistance = recomputeDistanceFromOrigin(localIntersection.point, ray.origin);
+
+                if (worldDistance >= minDistance && worldDistance < t_min) {
+                    intersection = localIntersection;
+                    intersection.distance = worldDistance;
+                    intersection.kind = Intersection::Kind::Mesh;
+                    t_min = worldDistance;
+                    hit = true;
+                }
+            }
+
+#if PROFILE_PERF
+            auto t_func_end = std::chrono::high_resolution_clock::now();
+            g_timeRayHitsMesh += std::chrono::duration_cast<std::chrono::nanoseconds>(t_func_end - t_func_start).count();
+#endif
+            return hit;
         }
-        bool hit = false;
-        for(int i = 0; i < (int)mesh.faces.size(); i++) {
-            if (rayHitsTriangle(ray, mesh.faces[i], vertices, t_min, intersection, intersectionTestEpsilon, determinants[i], materialToUse, enableBackFaceCulling, meshIndex, i, minDistance)) {
+
+        // Brute-force triangle path
+        for (int i = 0; i < (int)mesh.faces.size(); i++) {
+            if (rayHitsTriangle(ray,
+                                mesh.faces[i],
+                                vertices,
+                                t_min,
+                                intersection,
+                                intersectionTestEpsilon,
+                                determinants[i],
+                                materialToUse,
+                                enableBackFaceCulling,
+                                meshIndex,
+                                i,
+                                minDistance)) {
                 hit = true;
                 intersection.kind = Intersection::Kind::Mesh;
             }
         }
+
+#if PROFILE_PERF
+        auto t_func_end = std::chrono::high_resolution_clock::now();
+        g_timeRayHitsMesh += std::chrono::duration_cast<std::chrono::nanoseconds>(t_func_end - t_func_start).count();
+#endif
         return hit;
     }
     
@@ -600,7 +663,11 @@ bool rayHitsMesh(
 #endif
     
     bool hit = false;
-    
+
+    // Local best hit for this mesh in OBJECT SPACE
+    double local_t_min = std::numeric_limits<double>::max();
+    Intersection localIntersection;
+
     if (bvh != nullptr) {
 #if PROFILE_PERF
         auto t_bvh_start = std::chrono::high_resolution_clock::now();
@@ -610,7 +677,17 @@ bool rayHitsMesh(
         const vector<double>& dets = hasTransform ? vector<double>() : determinants;
         // For transformed meshes, near-plane clipping is applied in world space after back-transform,
         // so we pass minDistance = 0.0 here.
-        hit = bvh->traverse(objectRay, mesh, vertices, dets, local_t_min, intersection, intersectionTestEpsilon, enableBackFaceCulling, meshIndex, materialToUse, 0.0);
+        hit = bvh->traverse(objectRay,
+                            mesh,
+                            vertices,
+                            dets,
+                            local_t_min,
+                            localIntersection,
+                            intersectionTestEpsilon,
+                            enableBackFaceCulling,
+                            meshIndex,
+                            materialToUse,
+                            0.0);
 #if PROFILE_PERF
         auto t_bvh_end = std::chrono::high_resolution_clock::now();
         g_timeBVHTraverse += std::chrono::duration_cast<std::chrono::nanoseconds>(t_bvh_end - t_bvh_start).count();
@@ -619,12 +696,21 @@ bool rayHitsMesh(
 #if PROFILE_PERF
         auto t_tri_start = std::chrono::high_resolution_clock::now();
 #endif
-        for(int i = 0; i < (int)mesh.faces.size(); i++) {
+        for (int i = 0; i < (int)mesh.faces.size(); i++) {
             // For transformed meshes, always pass 0.0 to force determinant recomputation
             double det = hasTransform ? 0.0 : (i < (int)determinants.size() ? determinants[i] : 0.0);
-            if (rayHitsTriangle(objectRay, mesh.faces[i], vertices, local_t_min, intersection, intersectionTestEpsilon, det, materialToUse, enableBackFaceCulling, meshIndex, i)) {
+            if (rayHitsTriangle(objectRay,
+                                mesh.faces[i],
+                                vertices,
+                                local_t_min,
+                                localIntersection,
+                                intersectionTestEpsilon,
+                                det,
+                                materialToUse,
+                                enableBackFaceCulling,
+                                meshIndex,
+                                i)) {
                 hit = true;
-                intersection.kind = Intersection::Kind::Mesh;
             }
         }
 #if PROFILE_PERF
@@ -640,13 +726,6 @@ bool rayHitsMesh(
 #endif
         return false;
     }
-    if (!hasTransform) {
-#if PROFILE_PERF
-        auto t_func_end = std::chrono::high_resolution_clock::now();
-        g_timeRayHitsMesh += std::chrono::duration_cast<std::chrono::nanoseconds>(t_func_end - t_func_start).count();
-#endif
-        return true;
-    }
     
 #if PROFILE_PERF
     auto t_back_start = std::chrono::high_resolution_clock::now();
@@ -658,22 +737,35 @@ bool rayHitsMesh(
     const double* transPtr = transMat->m;
     const double* normPtr = normMat->m;
     
-    // Fast transform intersection point to world space
-    VectorFloatTriplet worldPoint = transformPointFast(transPtr, intersection.point.x, intersection.point.y, intersection.point.z);
+    // Fast transform intersection point to world space (from localIntersection)
+    VectorFloatTriplet worldPoint = transformPointFast(
+        transPtr,
+        localIntersection.point.x,
+        localIntersection.point.y,
+        localIntersection.point.z);
     
-    // Fast distance calculation
-    double dx = worldPoint.x - ray.origin.x;
-    double dy = worldPoint.y - ray.origin.y;
-    double dz = worldPoint.z - ray.origin.z;
-    double worldDistance = sqrtf(dx*dx + dy*dy + dz*dz);
+    // Compute world-space distance from the ORIGINAL ray origin
+    double worldDistance = recomputeDistanceFromOrigin(worldPoint, ray.origin);
     
+    // Near-plane clipping for primary camera rays in world space
     if (worldDistance < minDistance) {
-        t_min = original_t_min;
+#if PROFILE_PERF
+        auto t_back_end = std::chrono::high_resolution_clock::now();
+        g_timeBackTransform += std::chrono::duration_cast<std::chrono::nanoseconds>(t_back_end - t_back_start).count();
+        auto t_func_end = std::chrono::high_resolution_clock::now();
+        g_timeRayHitsMesh += std::chrono::duration_cast<std::chrono::nanoseconds>(t_func_end - t_func_start).count();
+#endif
         return false;
     }
-    
-    if (worldDistance >= original_t_min) {
-        t_min = original_t_min;
+
+    // Depth ordering: only commit if closer than the current global best (in world metric)
+    if (worldDistance >= t_min) {
+#if PROFILE_PERF
+        auto t_back_end = std::chrono::high_resolution_clock::now();
+        g_timeBackTransform += std::chrono::duration_cast<std::chrono::nanoseconds>(t_back_end - t_back_start).count();
+        auto t_func_end = std::chrono::high_resolution_clock::now();
+        g_timeRayHitsMesh += std::chrono::duration_cast<std::chrono::nanoseconds>(t_func_end - t_func_start).count();
+#endif
         return false;
     }
 
@@ -681,9 +773,11 @@ bool rayHitsMesh(
     bool shouldFlipNormals = transformMatrix ? hasNegativeScale(*transformMatrix) : mesh.hasNegativeScale;
     
     // Fast transform and normalize geometric normal
-    VectorFloatTriplet worldGeomNormal = transformNormalFast(normPtr, intersection.geometricNormal.x, 
-                                                               intersection.geometricNormal.y, 
-                                                               intersection.geometricNormal.z);
+    VectorFloatTriplet worldGeomNormal = transformNormalFast(
+        normPtr,
+        localIntersection.geometricNormal.x,
+        localIntersection.geometricNormal.y,
+        localIntersection.geometricNormal.z);
     // DON'T flip at all - let the normal matrix handle it!
     // The problem is that ANY manual flipping breaks one case or the other
     double normLenSq = worldGeomNormal.x*worldGeomNormal.x + worldGeomNormal.y*worldGeomNormal.y + worldGeomNormal.z*worldGeomNormal.z;
@@ -694,17 +788,17 @@ bool rayHitsMesh(
     
     VectorFloatTriplet worldShadingNormal;
     
-    if (mesh.shadingMode == 's' && scene && meshIndex >= 0 && 
+    if (mesh.shadingMode == 's' && scene && meshIndex >= 0 &&
         meshIndex < (int)scene->meshVertexNormals.size() &&
-        intersection.faceIndex >= 0 && intersection.faceIndex < (int)mesh.faces.size()) {
+        localIntersection.faceIndex >= 0 && localIntersection.faceIndex < (int)mesh.faces.size()) {
         
-        const auto& face = mesh.faces[intersection.faceIndex];
+        const auto& face = mesh.faces[localIntersection.faceIndex];
         if (face.x < (int)scene->meshVertexNormals[meshIndex].size() &&
             face.y < (int)scene->meshVertexNormals[meshIndex].size() &&
             face.z < (int)scene->meshVertexNormals[meshIndex].size()) {
             
-            double u = intersection.beta;
-            double v = intersection.gamma;
+            double u = localIntersection.beta;
+            double v = localIntersection.gamma;
             double w = 1.0 - u - v;
             
             const auto& n0 = scene->meshVertexNormals[meshIndex][face.x];
@@ -728,9 +822,11 @@ bool rayHitsMesh(
             worldShadingNormal.y *= sinv;
             worldShadingNormal.z *= sinv;
         } else {
-            worldShadingNormal = transformNormalFast(normPtr, intersection.shadingNormal.x, 
-                                                      intersection.shadingNormal.y, 
-                                                      intersection.shadingNormal.z);
+            worldShadingNormal = transformNormalFast(
+                normPtr,
+                localIntersection.shadingNormal.x,
+                localIntersection.shadingNormal.y,
+                localIntersection.shadingNormal.z);
             double slen = sqrtf(worldShadingNormal.x*worldShadingNormal.x + 
                               worldShadingNormal.y*worldShadingNormal.y + 
                               worldShadingNormal.z*worldShadingNormal.z);
@@ -740,9 +836,11 @@ bool rayHitsMesh(
             worldShadingNormal.z *= sinv;
         }
     } else {
-        worldShadingNormal = transformNormalFast(normPtr, intersection.shadingNormal.x, 
-                                                  intersection.shadingNormal.y, 
-                                                  intersection.shadingNormal.z);
+        worldShadingNormal = transformNormalFast(
+            normPtr,
+            localIntersection.shadingNormal.x,
+            localIntersection.shadingNormal.y,
+            localIntersection.shadingNormal.z);
         double slen = sqrtf(worldShadingNormal.x*worldShadingNormal.x + 
                           worldShadingNormal.y*worldShadingNormal.y + 
                           worldShadingNormal.z*worldShadingNormal.z);
@@ -757,13 +855,18 @@ bool rayHitsMesh(
     // to determine if the ray is entering or exiting the medium.
     // The shading code will handle normal orientation per material type.
     
+    // Commit this mesh hit as the new global best
     intersection.point = worldPoint;
     intersection.geometricNormal = worldGeomNormal;
     intersection.shadingNormal = worldShadingNormal;
     intersection.distance = worldDistance;
-    t_min = worldDistance;
     intersection.kind = Intersection::Kind::Mesh;
     intersection.containerIndex = -2;
+    intersection.faceIndex = localIntersection.faceIndex;
+    intersection.beta = localIntersection.beta;
+    intersection.gamma = localIntersection.gamma;
+    intersection.material = localIntersection.material;
+    t_min = worldDistance;
     
 #if PROFILE_PERF
     auto t_back_end = std::chrono::high_resolution_clock::now();
@@ -835,6 +938,7 @@ Intersection intersect(const Scene& scene, Ray& ray) {
         Ray baseRay = tri.hasMotionBlur ? applyMotionBlurToRay(ray, tri.motionBlur) : ray;
         
         if (tri.hasTransformation) {
+            // Intersect in object space first, using a LOCAL t_min and intersection
             Ray objectRay;
             objectRay.origin = transformPoint(*tri.inverseTransformMatrix, baseRay.origin);
             objectRay.direction = normalize(transformDirection(*tri.inverseTransformMatrix, baseRay.direction));
@@ -845,32 +949,49 @@ Intersection intersect(const Scene& scene, Ray& ray) {
             objectRay.time = baseRay.time;
             objectRay.random1 = baseRay.random1;
             objectRay.random2 = baseRay.random2;
-            
-            double original_t_min = t_min;
-            if (rayHitsTriangle(objectRay, tri.indices, scene.vertices, t_min, intersection, scene.intersectionTestEpsilon, 0.0, tri.material, scene.enableBackFaceCulling, -1, i, 0.0)) {
-                VectorFloatTriplet worldPoint = transformPoint(*tri.transformMatrix, intersection.point);
-                VectorFloatTriplet worldGeomNormal = normalize(transformNormal(*tri.normalMatrix, intersection.geometricNormal));
-                VectorFloatTriplet worldShadingNormal = normalize(transformNormal(*tri.normalMatrix, intersection.shadingNormal));
-                double worldDistance = sqrt(dotProduct(worldPoint - baseRay.origin, worldPoint - baseRay.origin));
-                
+
+            double local_t_min = std::numeric_limits<double>::max();
+            Intersection localIntersection;
+
+            if (rayHitsTriangle(objectRay,
+                                tri.indices,
+                                scene.vertices,
+                                local_t_min,
+                                localIntersection,
+                                scene.intersectionTestEpsilon,
+                                0.0,
+                                tri.material,
+                                scene.enableBackFaceCulling,
+                                -1,
+                                i,
+                                0.0)) {
+
+                // Back-transform hit to world space
+                VectorFloatTriplet worldPoint = transformPoint(*tri.transformMatrix, localIntersection.point);
+                VectorFloatTriplet worldGeomNormal = normalize(transformNormal(*tri.normalMatrix, localIntersection.geometricNormal));
+                VectorFloatTriplet worldShadingNormal = normalize(transformNormal(*tri.normalMatrix, localIntersection.shadingNormal));
+
+                double worldDistance = recomputeDistanceFromOrigin(worldPoint, baseRay.origin);
+
+                // Near-plane clipping in world space for primary rays
                 if (isPrimaryRay && worldDistance < minDistance) {
-                    t_min = original_t_min;
                     continue;
                 }
-                
-                if (worldDistance < original_t_min) {
+
+                // Depth ordering in world space (global metric)
+                if (worldDistance < t_min) {
+                    intersection = localIntersection;
                     intersection.point = worldPoint;
                     intersection.geometricNormal = worldGeomNormal;
                     intersection.shadingNormal = worldShadingNormal;
                     intersection.distance = worldDistance;
+                    intersection.kind = Intersection::Kind::Triangle;
                     t_min = worldDistance;
                     hit = true;
-                    intersection.kind = Intersection::Kind::Triangle;
+
                     if (tri.hasMotionBlur) {
                         finalizeMotionBlurHit(ray, tri.motionBlur, ray.time, intersection, t_min);
                     }
-                } else {
-                    t_min = original_t_min;
                 }
             }
         } else {

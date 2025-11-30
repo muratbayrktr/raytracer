@@ -9,8 +9,8 @@ from typing import Optional, Tuple, List
 
 
 # --- Configuration ---
-INPUT_ROOT = Path("../inputs_hw2").resolve()
-OUTPUT_ROOT = Path("../my_outputs_hw2").resolve()
+INPUT_ROOT = Path("../inputs_hw3/tap_water").resolve()
+OUTPUT_ROOT = Path("../my_outputs_hw3").resolve()
 RAW_ROOT = OUTPUT_ROOT / "raw"
 PRETTY_ROOT = OUTPUT_ROOT / "pretty"
 RAYTRACER_BIN = Path("./raytracer").resolve()

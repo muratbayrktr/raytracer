@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List
 
-RAW_ROOT = Path("../my_outputs_hw2/raw").resolve()
+RAW_ROOT = Path("../my_outputs_hw3/results_json/").resolve()
 OUTPUT_ROOT = RAW_ROOT.parent
 CSV_PATH = OUTPUT_ROOT / "benchmark_raw.csv"
 
