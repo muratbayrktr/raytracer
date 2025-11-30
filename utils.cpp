@@ -533,6 +533,8 @@ bool rayHitsMesh(
     // ---------------------------
     // UNTRANSFORMED MESH PATH
     // ---------------------------
+    // For untransformed meshes, local t IS world distance (ray direction is normalized).
+    // We use t_min directly for comparisons - the caller handles motion blur correction.
     if (!hasTransform) {
         bool hit = false;
 
@@ -541,16 +543,13 @@ bool rayHitsMesh(
 #if PROFILE_PERF
             g_bvhTraversals++;
 #endif
-            double local_t_min = std::numeric_limits<double>::max();
-            Intersection localIntersection;
-
-            bool localHit = bvh->traverse(
+            hit = bvh->traverse(
                 ray,
                 mesh,
                 vertices,
                 determinants,
-                local_t_min,
-                localIntersection,
+                t_min,
+                intersection,
                 intersectionTestEpsilon,
                 enableBackFaceCulling,
                 meshIndex,
@@ -558,17 +557,8 @@ bool rayHitsMesh(
                 minDistance
             );
 
-            if (localHit) {
-                // localIntersection is already in world space because we used the world ray
-                double worldDistance = recomputeDistanceFromOrigin(localIntersection.point, ray.origin);
-
-                if (worldDistance >= minDistance && worldDistance < t_min) {
-                    intersection = localIntersection;
-                    intersection.distance = worldDistance;
-                    intersection.kind = Intersection::Kind::Mesh;
-                    t_min = worldDistance;
-                    hit = true;
-                }
+            if (hit) {
+                intersection.kind = Intersection::Kind::Mesh;
             }
 
 #if PROFILE_PERF
@@ -856,6 +846,8 @@ bool rayHitsMesh(
     // The shading code will handle normal orientation per material type.
     
     // Commit this mesh hit as the new global best
+    // Commit this mesh hit as the new global best
+    intersection.hit = true;  // CRITICAL: Mark as hit!
     intersection.point = worldPoint;
     intersection.geometricNormal = worldGeomNormal;
     intersection.shadingNormal = worldShadingNormal;
