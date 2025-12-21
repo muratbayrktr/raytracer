@@ -138,13 +138,20 @@ void precomputeSamples(int numSamples, int width, int height, VectorFloatPenta* 
         for (int x = 0; x < width; x++) {
             for (int s = 0; s < samplesPerDimension; s++) {
                 for (int t = 0; t < samplesPerDimension; t++) {
-                    ksi_1 = uniform_random(0.0, 1.0);
-                    ksi_2 = uniform_random(0.0, 1.0);
+                    if (numSamples == 1) {
+                        // Single sample: use pixel center (0.5, 0.5) for deterministic sampling
+                        ksi_1 = 0.5;
+                        ksi_2 = 0.5;
+                    } else {
+                        // Multiple samples: jittered stratified sampling
+                        ksi_1 = uniform_random(0.0, 1.0);
+                        ksi_2 = uniform_random(0.0, 1.0);
+                    }
                     // Jittered subpixel offsets in [0,1) for x and y
                     samples[j].x = (t + ksi_1) / samplesPerDimension;
                     samples[j].y = (s + ksi_2) / samplesPerDimension;
                     // Motion blur time sample in [0,1)
-                    samples[j].z = uniform_random(0.0, 1.0);
+                    samples[j].z = (numSamples == 1) ? 0.5 : uniform_random(0.0, 1.0);
                     // Extra random dimensions reused for lens / roughness / area lights
                     samples[j].w = uniform_random(0.0, 1.0);
                     samples[j].v = uniform_random(0.0, 1.0);

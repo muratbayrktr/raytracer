@@ -12,7 +12,8 @@
 #include <fstream>
 #include <atomic>
 // #include <SDL3/SDL.h> uncomment this if sdl3 is installed
-#define OUTPUT_PATH "../my_outputs_hw3/"
+#define OUTPUT_PATH "../my_outputs_hw4/"
+#define JSON_OUTPUT_PATH "../my_outputs_hw4/benchmark/"
 using namespace std;
 using namespace scene;
 
@@ -628,7 +629,7 @@ int main(int argc, char* argv[])
         };
     
         // output to scene name file_results.json
-        std::ofstream resultsFile((OUTPUT_PATH + outputName.substr(0, outputName.find_last_of('.')) + "_results.json").c_str());
+        std::ofstream resultsFile((JSON_OUTPUT_PATH + outputName.substr(0, outputName.find_last_of('.')) + "_results.json").c_str());
         resultsFile << results.dump(4);
         resultsFile.close();
     }

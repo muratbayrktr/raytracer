@@ -22,6 +22,10 @@ namespace scene {
         int x, y;
    };
 
+   struct VectorFloatPair {
+        double x, y;
+   };
+
    struct VectorFloatTriplet {
         double x, y, z;
    };
@@ -135,6 +139,56 @@ namespace scene {
         VectorFloatTriplet absorptionCoefficient = {0, 0, 0};
         double roughness = 0.0;  // Roughness for mirrors, conductors, and dielectrics
     };
+
+    struct Image {
+        unsigned int _id;
+        std::string filename;
+        unsigned char* data = nullptr;
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        ~Image();
+    };
+
+    enum class InterpolationMode {
+        Nearest,
+        Bilinear,
+        Trilinear
+    };
+
+    enum class DecalMode {
+        ReplaceKd,
+        BlendKd,
+        ReplaceKs,
+        ReplaceBackground,
+        ReplaceNormal,
+        BumpNormal,
+        ReplaceAll
+    };
+
+    enum class NoiseConversion {
+        AbsVal,
+        Linear
+    };
+
+    struct TextureMap {
+        unsigned int _id;
+        std::string type;  // "image", "perlin", "checkerboard"
+        unsigned int imageId = 0;  // Only for image type
+        DecalMode decalMode = DecalMode::ReplaceKd;
+        InterpolationMode interpolation = InterpolationMode::Nearest;
+        double bumpFactor = 0.01;  // Reasonable default (homework scenes use 0.01)
+        double noiseScale = 1.0;
+        NoiseConversion noiseConversion = NoiseConversion::Linear;
+        int numOctaves = 1;
+        double normalizer = 0.0;  // 0 = not set (use 255), otherwise divide pixel by this value
+        
+        // Checkerboard parameters
+        double scale = 1.0;
+        VectorFloatTriplet offset = {0, 0, 0};
+        VectorFloatTriplet blackColor = {0, 0, 0};
+        VectorFloatTriplet whiteColor = {1, 1, 1};
+    };
     
     // Forward declare AABB
     struct AABB;
@@ -151,11 +205,13 @@ namespace scene {
         AABB* worldSpaceBounds = nullptr;  // World-space bounding box for transformed objects
         VectorFloatTriplet motionBlur = {0, 0, 0};  // Displacement vector for motion blur (translational only)
         bool hasMotionBlur = false;
+        std::vector<unsigned int> textureIds;  // TextureMap IDs
     };
 
     struct Mesh : public Object {
         char shadingMode;
-        std::vector<VectorIntTriplet> faces;
+        std::vector<VectorIntTriplet> faces;  // Vertex indices
+        std::vector<VectorIntTriplet> texCoordIndices;  // Texture coordinate indices (separate from vertex indices)
     };
 
     struct Triangle : public Object {
@@ -215,6 +271,14 @@ namespace scene {
 
         std::vector<MeshBVH*> meshBVHs;
 
+        // Texture storage
+        std::vector<Image> images;
+        std::map<unsigned int, size_t> imageIdToIndex;
+        std::vector<TextureMap> textureMaps;
+        std::map<unsigned int, size_t> textureMapIdToIndex;
+        std::vector<VectorFloatPair> texCoords;  // Texture coordinates (UV pairs)
+        unsigned int backgroundTextureId = 0;  // TextureMap id used for background (ReplaceBackground)
+
         // Informational variables
         unsigned char currentCameraIndex;
         std::string baseDirectory;
@@ -223,6 +287,8 @@ namespace scene {
         void loadSceneFromFile(const std::string& filename);
         
         Material* getMaterialById(unsigned int id);
+        const Image* getImageById(unsigned int id) const;
+        const TextureMap* getTextureMapById(unsigned int id) const;
         
         template<typename T> 
         std::vector<T> parseObjects(const json& objectsData);
@@ -230,7 +296,17 @@ namespace scene {
         template<typename T>
         void parseSpecificAttributes(T& object, const json& objectData);
 
+        struct FaceParseResult {
+            std::vector<VectorIntTriplet> vertexFaces;
+            std::vector<VectorIntTriplet> texCoordFaces;
+        };
+        
+        FaceParseResult parseFacesWithOffsets(const json& facesData);
         std::vector<VectorIntTriplet> parseFaces(const json& facesData);
+        
+        FaceParseResult parsePLYFile(const std::string& plyFile, 
+                                      std::vector<VectorFloatTriplet>& vertexList,
+                                      std::vector<VectorFloatPair>& texCoordList);
         
         void buildBVH();
         
@@ -252,9 +328,6 @@ namespace scene {
     Material parseMaterial(const json& materialData);
     std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
     
-    std::vector<VectorIntTriplet> parsePLYFile(const std::string& plyFile, 
-                                                std::vector<VectorFloatTriplet>& vertexList);
-    
     Object parseObject(const json& objectData);
     
     // Transformation parsing functions
@@ -262,6 +335,11 @@ namespace scene {
     Scaling parseScaling(const json& scalingData);
     Rotation parseRotation(const json& rotationData);
     Composite parseComposite(const json& compositeData);
+    
+    // Texture parsing functions
+    Image parseImage(const json& imageData);
+    TextureMap parseTextureMap(const json& textureMapData);
+    std::vector<VectorFloatPair> parseTexCoordData(const json& texCoordData);
 
     struct Ray {
         VectorFloatTriplet origin;

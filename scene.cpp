@@ -4,6 +4,9 @@
 #include <string>
 #include <cstdio>
 #include <stdexcept>
+#include <algorithm>
+#include <cctype>
+#include <limits>
 
 #include "scene.h"
 #include "json.hpp"
@@ -14,6 +17,8 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 using json = nlohmann::json;
 
@@ -320,21 +325,157 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
 
     if (scene.contains("VertexData") && !scene["VertexData"].is_null()) {
         auto vertexData = scene["VertexData"];
-        auto vertexDataArray = vertexData["_data"];
-        if (vertexDataArray.is_array()) {
-            for (auto vertexData : vertexDataArray) {
-                try {
-                    std::vector<VectorFloatTriplet> vertices = parseVertex(vertexData);
-                    this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
-                    verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
-                } catch (const std::exception& e) {
-                    verbose("[!] Skipping Vertex Parsing. Reason: " + std::string(e.what()));
-                }   
+        if (vertexData.contains("_data") && !vertexData["_data"].is_null()) {
+            auto vertexDataArray = vertexData["_data"];
+            if (vertexDataArray.is_array()) {
+                for (auto vertexData : vertexDataArray) {
+                    try {
+                        std::vector<VectorFloatTriplet> vertices = parseVertex(vertexData);
+                        this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
+                        verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
+                    } catch (const std::exception& e) {
+                        verbose("[!] Skipping Vertex Parsing. Reason: " + std::string(e.what()));
+                    }
+                }
+            } else {
+                std::vector<VectorFloatTriplet> vertices = parseVertex(vertexDataArray);
+                this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
+                verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
             }
         } else {
-            std::vector<VectorFloatTriplet> vertices = parseVertex(vertexDataArray);
-            this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
-            verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
+            verbose("[!] Skipping VertexData Parsing. Reason: VertexData missing _data");
+        }
+    }
+
+    if (scene.contains("TexCoordData") && !scene["TexCoordData"].is_null()) {
+        try {
+            this->texCoords = parseTexCoordData(scene["TexCoordData"]);
+            verbose("[+] TexCoordData Parsed: " + std::to_string(this->texCoords.size()) + " UV pairs");
+        } catch (const std::exception& e) {
+            verbose("[!] Skipping TexCoordData Parsing. Reason: " + std::string(e.what()));
+        }
+    }
+
+    if (scene.contains("Textures") && !scene["Textures"].is_null()) {
+        auto textures = scene["Textures"];
+        
+        if (textures.contains("Images") && !textures["Images"].is_null()) {
+            auto imagesData = textures["Images"];
+            if (imagesData.contains("Image") && !imagesData["Image"].is_null()) {
+                auto imageArray = imagesData["Image"];
+                if (imageArray.is_array()) {
+                    for (auto imageData : imageArray) {
+                        try {
+                            Image newImage = parseImage(imageData);
+                            if (newImage._id != 0) {
+                                this->images.push_back(newImage);
+                                this->imageIdToIndex[newImage._id] = this->images.size() - 1;
+                                verbose("[+] Image Parsed: " + std::to_string(newImage._id));
+                            }
+                        } catch (const std::exception& e) {
+                            verbose("[!] Skipping Image Parsing. Reason: " + std::string(e.what()));
+                        }
+                    }
+                } else {
+                    try {
+                        Image newImage = parseImage(imageArray);
+                        if (newImage._id != 0) {
+                            this->images.push_back(newImage);
+                            this->imageIdToIndex[newImage._id] = this->images.size() - 1;
+                            verbose("[+] Image Parsed: " + std::to_string(newImage._id));
+                        }
+                    } catch (const std::exception& e) {
+                        verbose("[!] Skipping Image Parsing. Reason: " + std::string(e.what()));
+                    }
+                }
+            }
+        }
+        
+        // Load image data after parsing all image definitions
+        for (auto& image : this->images) {
+            std::string fullPath = this->baseDirectory + image.filename;
+            int width, height, channels;
+            unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 0);
+            if (data) {
+                image.data = data;
+                image.width = width;
+                image.height = height;
+                image.channels = channels;
+                verbose("[+] Image loaded: " + image.filename + " (" + std::to_string(width) + "x" + std::to_string(height) + ", " + std::to_string(channels) + " channels)");
+            } else {
+                verbose("[!] Failed to load image: " + fullPath);
+                throw std::runtime_error("Failed to load image: " + fullPath);
+            }
+        }
+        
+        if (textures.contains("TextureMap") && !textures["TextureMap"].is_null()) {
+            auto textureMapArray = textures["TextureMap"];
+            if (textureMapArray.is_array()) {
+                for (auto textureMapData : textureMapArray) {
+                    try {
+                        TextureMap newTextureMap = parseTextureMap(textureMapData);
+                        if (newTextureMap._id != 0) {
+                            this->textureMaps.push_back(newTextureMap);
+                            this->textureMapIdToIndex[newTextureMap._id] = this->textureMaps.size() - 1;
+                            if (newTextureMap.decalMode == DecalMode::ReplaceBackground) {
+                                // Only accept if it points to a valid loaded image (for image textures)
+                                bool ok = true;
+                                if (newTextureMap.type == "image") {
+                                    ok = (this->getImageById(newTextureMap.imageId) != nullptr);
+                                }
+                                if (ok) {
+                                    this->backgroundTextureId = newTextureMap._id;
+                                    verbose("[+] BackgroundTexture set from TextureMap " + std::to_string(newTextureMap._id) +
+                                            " (imageId=" + std::to_string(newTextureMap.imageId) + ")");
+                                } else {
+                                    verbose("[!] Ignoring replace_background TextureMap " + std::to_string(newTextureMap._id) +
+                                            " because ImageId " + std::to_string(newTextureMap.imageId) + " was not loaded");
+                                }
+                            }
+                            verbose("[+] TextureMap Parsed: " + std::to_string(newTextureMap._id));
+                        }
+                    } catch (const std::exception& e) {
+                        verbose("[!] Skipping TextureMap Parsing. Reason: " + std::string(e.what()));
+                    }
+                }
+            } else {
+                try {
+                    TextureMap newTextureMap = parseTextureMap(textureMapArray);
+                    if (newTextureMap._id != 0) {
+                        this->textureMaps.push_back(newTextureMap);
+                        this->textureMapIdToIndex[newTextureMap._id] = this->textureMaps.size() - 1;
+                        if (newTextureMap.decalMode == DecalMode::ReplaceBackground) {
+                            bool ok = true;
+                            if (newTextureMap.type == "image") {
+                                ok = (this->getImageById(newTextureMap.imageId) != nullptr);
+                            }
+                            if (ok) {
+                                this->backgroundTextureId = newTextureMap._id;
+                                verbose("[+] BackgroundTexture set from TextureMap " + std::to_string(newTextureMap._id) +
+                                        " (imageId=" + std::to_string(newTextureMap.imageId) + ")");
+                            } else {
+                                verbose("[!] Ignoring replace_background TextureMap " + std::to_string(newTextureMap._id) +
+                                        " because ImageId " + std::to_string(newTextureMap.imageId) + " was not loaded");
+                            }
+                        }
+                        verbose("[+] TextureMap Parsed: " + std::to_string(newTextureMap._id));
+                    }
+                } catch (const std::exception& e) {
+                    verbose("[!] Skipping TextureMap Parsing. Reason: " + std::string(e.what()));
+                }
+            }
+        }
+    }
+
+    // Fallback: if no explicit BackgroundTexture field and no ReplaceBackground texture was seen while parsing,
+    // scan all texture maps and pick the first ReplaceBackground.
+    if (this->backgroundTextureId == 0) {
+        for (const auto& tm : this->textureMaps) {
+            if (tm.decalMode == DecalMode::ReplaceBackground) {
+                this->backgroundTextureId = tm._id;
+                verbose("[+] BackgroundTexture fallback set to TextureMap " + std::to_string(tm._id));
+                break;
+            }
         }
     }
 
@@ -560,27 +701,67 @@ std::vector<scene::VectorFloatTriplet> scene::parseVertex(const json& vertexData
     return vertices;   
 }
 
-std::vector<scene::VectorIntTriplet> scene::Scene::parseFaces(const json& facesData) {
+scene::Scene::FaceParseResult scene::Scene::parseFacesWithOffsets(const json& facesData) {
+    FaceParseResult result;
+    
     if (facesData.contains("_data")) {
         auto facesDataArray = facesData["_data"];
         std::stringstream stream(facesDataArray.get<std::string>());
-        std::vector<scene::VectorIntTriplet> faces;
-        scene::VectorIntTriplet face;
-        while (stream >> face.x >> face.y >> face.z) {
-            // Convert from 1-based to 0-based indexing
-            face.x -= 1;
-            face.y -= 1;
-            face.z -= 1;
-            faces.push_back(face);
+        
+        // Parse vertex and texture offsets
+        // Offsets are interpreted as a shift applied after converting to 0-based indexing:
+        //
+        //   finalIndex = rawIndex + offset - 1
+        //
+        // This convention supports:
+        // - **1-based faces with no shift**: offset=0 -> final = raw - 1
+        // - **0-based faces with no shift**: offset=1 -> final = raw
+        // - **large positive vertex offsets** (e.g. appended vertex blocks): offset=46352
+        // - **negative texture offsets** (e.g. mapping into a small TexCoordData array): offset=-4, -8, ...
+        int vertexOffset = 0;
+        int textureOffset = 0;
+        
+        if (facesData.contains("_vertexOffset") && !facesData["_vertexOffset"].is_null()) {
+            vertexOffset = parseSingleValue<int>(facesData["_vertexOffset"]);
+            verbose("[+] Faces _vertexOffset: " + std::to_string(vertexOffset));
+        }
+        
+        if (facesData.contains("_textureOffset") && !facesData["_textureOffset"].is_null()) {
+            textureOffset = parseSingleValue<int>(facesData["_textureOffset"]);
+            verbose("[+] Faces _textureOffset: " + std::to_string(textureOffset));
+        }
+        
+        // Read and convert faces
+        int rawX, rawY, rawZ;  // Store original face values from file
+        scene::VectorIntTriplet vertexFace, texCoordFace;
+        while (stream >> rawX >> rawY >> rawZ) {
+            vertexFace.x = rawX + vertexOffset - 1;
+            vertexFace.y = rawY + vertexOffset - 1;
+            vertexFace.z = rawZ + vertexOffset - 1;
+            result.vertexFaces.push_back(vertexFace);
+            
+            texCoordFace.x = rawX + textureOffset - 1;
+            texCoordFace.y = rawY + textureOffset - 1;
+            texCoordFace.z = rawZ + textureOffset - 1;
+            result.texCoordFaces.push_back(texCoordFace);
         }
         stream.clear();
-        return faces;
+        return result;
+    }
+    
+    return result;
+}
+
+std::vector<scene::VectorIntTriplet> scene::Scene::parseFaces(const json& facesData) {
+    if (facesData.contains("_data")) {
+        FaceParseResult faceResult = parseFacesWithOffsets(facesData);
+        return faceResult.vertexFaces;
     } else if (facesData.contains("_plyFile")) {
         std::string plyFile = facesData["_plyFile"].get<std::string>();
         std::string fullPath = this->baseDirectory + plyFile;
-        // parsePLYFile will add vertices to this->vertices and return adjusted faces
-        std::vector<scene::VectorIntTriplet> faces = parsePLYFile(fullPath, this->vertices);
-        return faces;
+        // parsePLYFile will add vertices and texture coordinates, and return adjusted faces
+        FaceParseResult faceResult = parsePLYFile(fullPath, this->vertices, this->texCoords);
+        return faceResult.vertexFaces;
     } else {
         verbose("[!] Skipping Faces Parsing. Reason: Not found in the scene file.");
         return std::vector<scene::VectorIntTriplet>();
@@ -608,6 +789,17 @@ std::vector<T> scene::Scene::parseObjects(const json& objectsData) {
                 std::string transformStr = objectData["Transformations"].get<std::string>();
                 newObject.transformations = parseTransformationString(transformStr);
                 verbose("[+] Object Transformations parsed: " + transformStr + " (" + std::to_string(newObject.transformations.size()) + " transforms)");
+            }
+            
+            // Parse Textures if present
+            if (objectData.contains("Textures") && !objectData["Textures"].is_null()) {
+                std::string texturesStr = objectData["Textures"].get<std::string>();
+                std::istringstream stream(texturesStr);
+                unsigned int textureId;
+                while (stream >> textureId) {
+                    newObject.textureIds.push_back(textureId);
+                }
+                verbose("[+] Object Textures parsed: " + texturesStr + " (" + std::to_string(newObject.textureIds.size()) + " textures)");
             }
             
             parseSpecificAttributes<T>(newObject, objectData);
@@ -638,6 +830,17 @@ std::vector<T> scene::Scene::parseObjects(const json& objectsData) {
             verbose("[+] Object Transformations parsed: " + transformStr + " (" + std::to_string(newObject.transformations.size()) + " transforms)");
         }
         
+        // Parse Textures if present
+        if (objectsData.contains("Textures") && !objectsData["Textures"].is_null()) {
+            std::string texturesStr = objectsData["Textures"].get<std::string>();
+            std::istringstream stream(texturesStr);
+            unsigned int textureId;
+            while (stream >> textureId) {
+                newObject.textureIds.push_back(textureId);
+            }
+            verbose("[+] Object Textures parsed: " + texturesStr + " (" + std::to_string(newObject.textureIds.size()) + " textures)");
+        }
+        
         parseSpecificAttributes<T>(newObject, objectsData);
         objects.push_back(newObject);
     }
@@ -652,7 +855,18 @@ void scene::Scene::parseSpecificAttributes<scene::Mesh>(scene::Mesh& object, con
         object.shadingMode = tolower(objectData["_shadingMode"].get<std::string>()[0]);
     }
     if (objectData.contains("Faces") && !objectData["Faces"].is_null()) {
-        object.faces = parseFaces(objectData["Faces"]);
+        const json& facesData = objectData["Faces"];
+        if (facesData.contains("_data") && !facesData["_data"].is_null()) {
+            FaceParseResult faceResult = parseFacesWithOffsets(facesData);
+            object.faces = faceResult.vertexFaces;
+            object.texCoordIndices = faceResult.texCoordFaces;
+        } else if (facesData.contains("_plyFile") && !facesData["_plyFile"].is_null()) {
+            std::string plyFile = facesData["_plyFile"].get<std::string>();
+            std::string fullPath = this->baseDirectory + plyFile;
+            FaceParseResult faceResult = parsePLYFile(fullPath, this->vertices, this->texCoords);
+            object.faces = faceResult.vertexFaces;
+            object.texCoordIndices = faceResult.texCoordFaces;
+        }
     }
     
     // Parse MotionBlur if present
@@ -762,6 +976,22 @@ scene::Material* scene::Scene::getMaterialById(unsigned int id) {
     return nullptr;
 }
 
+const scene::Image* scene::Scene::getImageById(unsigned int id) const {
+    auto it = imageIdToIndex.find(id);
+    if (it != imageIdToIndex.end()) {
+        return &images[it->second];
+    }
+    return nullptr;
+}
+
+const scene::TextureMap* scene::Scene::getTextureMapById(unsigned int id) const {
+    auto it = textureMapIdToIndex.find(id);
+    if (it != textureMapIdToIndex.end()) {
+        return &textureMaps[it->second];
+    }
+    return nullptr;
+}
+
 
 void scene::Scene::getSummary() {
     verbose("Scene:");
@@ -817,15 +1047,89 @@ void scene::Scene::writePPM(const std::string& filename, unsigned char* image, i
     }
 }
 
-std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyFile, std::vector<scene::VectorFloatTriplet>& vertexList) {
+scene::Scene::FaceParseResult scene::Scene::parsePLYFile(const std::string& plyFile, 
+                                                          std::vector<scene::VectorFloatTriplet>& vertexList,
+                                                          std::vector<scene::VectorFloatPair>& texCoordList) {
+    FaceParseResult result;
+    
     if (!std::ifstream(plyFile).good()) {
         throw std::runtime_error("Error: PLY file does not exist: " + plyFile);
     }
     happly::PLYData plyData(plyFile);
 
-    // Remember how many vertices we already have so we can offset indices
-    // from the PLY file to point into the combined vertex list.
-    size_t baseIndex = vertexList.size();
+    // Remember how many vertices and texture coordinates we already have so we can offset indices
+    // from the PLY file to point into the combined lists.
+    size_t baseVertexIndex = vertexList.size();
+    size_t baseTexCoordIndex = texCoordList.size();
+
+    // Try to extract texture coordinates from PLY file
+    // PLY files can have texture coordinates as vertex properties with various names:
+    // "s"/"t", "u"/"v", "texture_u"/"texture_v", "texcoord_u"/"texcoord_v"
+    bool hasTexCoords = false;
+    std::vector<double> texU, texV;
+    
+    try {
+        happly::Element& vertexElement = plyData.getElement("vertex");
+        std::vector<std::string> propertyNames = vertexElement.getPropertyNames();
+        
+        // Try common texture coordinate property names
+        std::vector<std::pair<std::string, std::string>> texCoordNames = {
+            {"s", "t"},
+            {"u", "v"},
+            {"texture_u", "texture_v"},
+            {"texcoord_u", "texcoord_v"},
+            {"tx", "ty"}
+        };
+        
+        for (const auto& namePair : texCoordNames) {
+            bool hasU = false, hasV = false;
+            for (const std::string& propName : propertyNames) {
+                if (propName == namePair.first) hasU = true;
+                if (propName == namePair.second) hasV = true;
+            }
+            
+            if (hasU && hasV) {
+                try {
+                    texU = vertexElement.getProperty<double>(namePair.first);
+                    texV = vertexElement.getProperty<double>(namePair.second);
+                    hasTexCoords = true;
+                    verbose("[+] Found texture coordinates in PLY file: " + namePair.first + "/" + namePair.second);
+                    break;
+                } catch (const std::exception&) {
+                    // Try as float if double fails
+                    try {
+                        std::vector<float> uFloat = vertexElement.getProperty<float>(namePair.first);
+                        std::vector<float> vFloat = vertexElement.getProperty<float>(namePair.second);
+                        texU.resize(uFloat.size());
+                        texV.resize(vFloat.size());
+                        for (size_t i = 0; i < uFloat.size(); i++) {
+                            texU[i] = static_cast<double>(uFloat[i]);
+                            texV[i] = static_cast<double>(vFloat[i]);
+                        }
+                        hasTexCoords = true;
+                        verbose("[+] Found texture coordinates in PLY file (as float): " + namePair.first + "/" + namePair.second);
+                        break;
+                    } catch (const std::exception&) {
+                        // Continue to next name pair
+                    }
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        // No texture coordinates found, that's okay
+        verbose("[!] No texture coordinates found in PLY file: " + std::string(e.what()));
+    }
+
+    // Extract texture coordinates if found
+    if (hasTexCoords && texU.size() == texV.size()) {
+        for (size_t i = 0; i < texU.size(); i++) {
+            scene::VectorFloatPair uv;
+            uv.x = texU[i];
+            uv.y = texV[i];
+            texCoordList.push_back(uv);
+        }
+        verbose("[+] Extracted " + std::to_string(texU.size()) + " texture coordinates from PLY file");
+    }
 
     // Get faces from the PLY file. The underlying library (`happly`) already
     // handles both the standard `vertex_indices` and the common variant
@@ -835,8 +1139,9 @@ std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyF
     // Triangulate faces in case some polygons have more than 3 vertices
     // (e.g., quads in cube meshes). We use a simple fan triangulation:
     //   (v0, v1, v2), (v0, v2, v3), ...
-    std::vector<scene::VectorIntTriplet> facesVector;
-    facesVector.reserve(faces.size()); // lower bound; may grow if we split quads/ngons
+    result.vertexFaces.reserve(faces.size()); // lower bound; may grow if we split quads/ngons
+    result.texCoordFaces.reserve(faces.size());
+    
     for (const auto& face : faces) {
         if (face.size() < 3) {
             // Degenerate face; skip it.
@@ -844,16 +1149,30 @@ std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyF
         }
 
         for (size_t k = 1; k + 1 < face.size(); ++k) {
-            scene::VectorIntTriplet tri;
-            // PLY indices are 0-based; shift them by baseIndex so they refer to
+            scene::VectorIntTriplet vertexTri;
+            // PLY indices are 0-based; shift them by baseVertexIndex so they refer to
             // the vertices we append below.
-            tri.x = static_cast<int>(baseIndex + face[0]);
-            tri.y = static_cast<int>(baseIndex + face[k]);
-            tri.z = static_cast<int>(baseIndex + face[k + 1]);
-            facesVector.push_back(tri);
+            vertexTri.x = static_cast<int>(baseVertexIndex + face[0]);
+            vertexTri.y = static_cast<int>(baseVertexIndex + face[k]);
+            vertexTri.z = static_cast<int>(baseVertexIndex + face[k + 1]);
+            result.vertexFaces.push_back(vertexTri);
+            
+            // Texture coordinate indices: if we found texture coordinates, use them
+            // Otherwise, use the same indices as vertices (fallback)
+            if (hasTexCoords) {
+                scene::VectorIntTriplet texTri;
+                texTri.x = static_cast<int>(baseTexCoordIndex + face[0]);
+                texTri.y = static_cast<int>(baseTexCoordIndex + face[k]);
+                texTri.z = static_cast<int>(baseTexCoordIndex + face[k + 1]);
+                result.texCoordFaces.push_back(texTri);
+            } else {
+                // Fallback: use vertex indices for texture coordinates
+                result.texCoordFaces.push_back(vertexTri);
+            }
         }
     }
 
+    // Extract and add vertices
     std::vector<std::array<double, 3>> vertices = plyData.getVertexPositions();
     std::vector<scene::VectorFloatTriplet> verticesVector = std::vector<scene::VectorFloatTriplet>(vertices.size());
     for (size_t i = 0; i < vertices.size(); i++) {
@@ -865,7 +1184,8 @@ std::vector<scene::VectorIntTriplet> scene::parsePLYFile(const std::string& plyF
         verticesVector[i] = vertexVector;
     }
     vertexList.insert(vertexList.end(), verticesVector.begin(), verticesVector.end());
-    return facesVector;
+    
+    return result;
 }
 
 scene::Translation scene::parseTranslation(const json& translationData) {
@@ -1195,4 +1515,173 @@ void scene::Scene::buildBVH() {
     verbose("================================================");
     verbose("BVH construction complete in " + std::to_string(duration.count()) + " milliseconds");
     verbose("================================================");
+}
+
+scene::Image::~Image() {
+    if (data) {
+        stbi_image_free(data);
+        data = nullptr;
+    }
+}
+
+scene::Image scene::parseImage(const json& imageData) {
+    Image newImage;
+    try {
+        newImage._id = parseSingleValue<unsigned int>(imageData["_id"]);
+        newImage.filename = imageData["_data"].get<std::string>();
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to parse Image: " + std::string(e.what()));
+    }
+    return newImage;
+}
+
+scene::TextureMap scene::parseTextureMap(const json& textureMapData) {
+    TextureMap newTextureMap;
+    auto normalizeKey = [](std::string s) {
+        // trim
+        const char* ws = " \t\n\r";
+        size_t start = s.find_first_not_of(ws);
+        size_t end = s.find_last_not_of(ws);
+        if (start == std::string::npos) return std::string();
+        s = s.substr(start, end - start + 1);
+        // lowercase
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return s;
+    };
+    auto parseUInt = [&](const json& v) -> unsigned int {
+        if (v.is_string()) return parseSingleValue<unsigned int>(v.get<std::string>());
+        if (v.is_number_unsigned()) return v.get<unsigned int>();
+        if (v.is_number_integer()) return (unsigned int)std::max<long long>(0, v.get<long long>());
+        throw std::runtime_error("Expected unsigned int (string/number)");
+    };
+    auto parseDouble = [&](const json& v) -> double {
+        if (v.is_string()) return parseSingleValue<double>(v.get<std::string>());
+        if (v.is_number_float()) return v.get<double>();
+        if (v.is_number_integer()) return (double)v.get<long long>();
+        if (v.is_number_unsigned()) return (double)v.get<unsigned long long>();
+        throw std::runtime_error("Expected double (string/number)");
+    };
+    try {
+        newTextureMap._id = parseUInt(textureMapData["_id"]);
+        
+        if (textureMapData.contains("_type") && !textureMapData["_type"].is_null()) {
+            newTextureMap.type = normalizeKey(textureMapData["_type"].get<std::string>());
+        } else {
+            throw std::runtime_error("TextureMap missing _type");
+        }
+        
+        if (newTextureMap.type == "image") {
+            if (textureMapData.contains("ImageId") && !textureMapData["ImageId"].is_null()) {
+                newTextureMap.imageId = parseUInt(textureMapData["ImageId"]);
+            } else {
+                throw std::runtime_error("Image texture missing ImageId");
+            }
+        }
+        
+        if (textureMapData.contains("DecalMode") && !textureMapData["DecalMode"].is_null()) {
+            std::string decalModeStr = normalizeKey(textureMapData["DecalMode"].get<std::string>());
+            if (decalModeStr == "replace_kd") {
+                newTextureMap.decalMode = DecalMode::ReplaceKd;
+            } else if (decalModeStr == "blend_kd") {
+                newTextureMap.decalMode = DecalMode::BlendKd;
+            } else if (decalModeStr == "replace_ks") {
+                newTextureMap.decalMode = DecalMode::ReplaceKs;
+            } else if (decalModeStr == "replace_background") {
+                newTextureMap.decalMode = DecalMode::ReplaceBackground;
+            } else if (decalModeStr == "replace_normal") {
+                newTextureMap.decalMode = DecalMode::ReplaceNormal;
+            } else if (decalModeStr == "bump_normal") {
+                newTextureMap.decalMode = DecalMode::BumpNormal;
+            } else if (decalModeStr == "replace_all") {
+                newTextureMap.decalMode = DecalMode::ReplaceAll;
+            }
+        }
+        
+        if (textureMapData.contains("Interpolation") && !textureMapData["Interpolation"].is_null()) {
+            std::string interpStr = normalizeKey(textureMapData["Interpolation"].get<std::string>());
+            if (interpStr == "nearest") {
+                newTextureMap.interpolation = InterpolationMode::Nearest;
+            } else if (interpStr == "bilinear") {
+                newTextureMap.interpolation = InterpolationMode::Bilinear;
+            } else if (interpStr == "trilinear") {
+                newTextureMap.interpolation = InterpolationMode::Trilinear;
+            }
+        }
+        
+        if (textureMapData.contains("BumpFactor") && !textureMapData["BumpFactor"].is_null()) {
+            newTextureMap.bumpFactor = parseDouble(textureMapData["BumpFactor"]);
+        }
+        
+        if (textureMapData.contains("NoiseScale") && !textureMapData["NoiseScale"].is_null()) {
+            newTextureMap.noiseScale = parseDouble(textureMapData["NoiseScale"]);
+        }
+        
+        if (textureMapData.contains("NoiseConversion") && !textureMapData["NoiseConversion"].is_null()) {
+            std::string noiseConvStr = textureMapData["NoiseConversion"].get<std::string>();
+            if (noiseConvStr == "absval") {
+                newTextureMap.noiseConversion = NoiseConversion::AbsVal;
+            } else if (noiseConvStr == "linear") {
+                newTextureMap.noiseConversion = NoiseConversion::Linear;
+            }
+        }
+        
+        if (textureMapData.contains("NumOctaves") && !textureMapData["NumOctaves"].is_null()) {
+            if (textureMapData["NumOctaves"].is_string()) {
+                newTextureMap.numOctaves = parseSingleValue<int>(textureMapData["NumOctaves"].get<std::string>());
+            } else if (textureMapData["NumOctaves"].is_number_integer()) {
+                newTextureMap.numOctaves = textureMapData["NumOctaves"].get<int>();
+            } else if (textureMapData["NumOctaves"].is_number_unsigned()) {
+                newTextureMap.numOctaves = (int)textureMapData["NumOctaves"].get<unsigned int>();
+            }
+        }
+        
+        if (textureMapData.contains("Normalizer") && !textureMapData["Normalizer"].is_null()) {
+            newTextureMap.normalizer = parseDouble(textureMapData["Normalizer"]);
+            verbose("[+] TextureMap Normalizer parsed: " + std::to_string(newTextureMap.normalizer));
+        }
+        
+        if (textureMapData.contains("Scale") && !textureMapData["Scale"].is_null()) {
+            newTextureMap.scale = parseDouble(textureMapData["Scale"]);
+        }
+        
+        if (textureMapData.contains("Offset") && !textureMapData["Offset"].is_null()) {
+            newTextureMap.offset = parseTriplet<VectorFloatTriplet>(textureMapData["Offset"]);
+        }
+        
+        if (textureMapData.contains("BlackColor") && !textureMapData["BlackColor"].is_null()) {
+            newTextureMap.blackColor = parseTriplet<VectorFloatTriplet>(textureMapData["BlackColor"]);
+        }
+        
+        if (textureMapData.contains("WhiteColor") && !textureMapData["WhiteColor"].is_null()) {
+            newTextureMap.whiteColor = parseTriplet<VectorFloatTriplet>(textureMapData["WhiteColor"]);
+        }
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to parse TextureMap: " + std::string(e.what()));
+    }
+    return newTextureMap;
+}
+
+std::vector<scene::VectorFloatPair> scene::parseTexCoordData(const json& texCoordData) {
+    std::vector<VectorFloatPair> texCoords;
+    try {
+        if (texCoordData.contains("_type") && !texCoordData["_type"].is_null()) {
+            std::string type = texCoordData["_type"].get<std::string>();
+            if (type != "uv") {
+                throw std::runtime_error("Unsupported TexCoordData type: " + type);
+            }
+        }
+        
+        if (texCoordData.contains("_data") && !texCoordData["_data"].is_null()) {
+            std::stringstream stream(texCoordData["_data"].get<std::string>());
+            VectorFloatPair uv;
+            while (stream >> uv.x >> uv.y) {
+                texCoords.push_back(uv);
+            }
+        } else {
+            throw std::runtime_error("TexCoordData missing _data");
+        }
+    } catch (const std::exception& e) {
+        throw std::runtime_error("Failed to parse TexCoordData: " + std::string(e.what()));
+    }
+    return texCoords;
 }

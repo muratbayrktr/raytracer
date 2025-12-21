@@ -8,6 +8,7 @@
 #include "overloads.h"
 #include "bvh.h"
 #include "precompute.h"
+#include "texture.h"
 
 using namespace std;
 using namespace scene;
@@ -1183,6 +1184,56 @@ VectorFloatTriplet perturbDirection(const VectorFloatTriplet& idealDir,
     return normalize(perturbed);
 }
 
+static std::vector<unsigned int> getTextureIdsFromIntersection(const Scene& scene, const Intersection& intersection) {
+    std::vector<unsigned int> textureIds;
+    
+    switch (intersection.kind) {
+        case Intersection::Kind::Triangle:
+            if (intersection.containerIndex >= 0 && intersection.containerIndex < (int)scene.triangles.size()) {
+                textureIds = scene.triangles[intersection.containerIndex].textureIds;
+            }
+            break;
+        case Intersection::Kind::Mesh: {
+            if (intersection.containerIndex >= 0 && intersection.containerIndex < (int)scene.meshes.size()) {
+                textureIds = scene.meshes[intersection.containerIndex].textureIds;
+            } else if (intersection.containerIndex == -2) {
+                for (size_t i = 0; i < scene.meshes.size(); i++) {
+                    if (intersection.faceIndex >= 0 && 
+                        intersection.faceIndex < (int)scene.meshes[i].faces.size() &&
+                        scene.meshes[i].material == intersection.material) {
+                        textureIds = scene.meshes[i].textureIds;
+                        break;
+                    }
+                }
+                if (textureIds.empty()) {
+                    for (size_t i = 0; i < scene.meshes.size(); i++) {
+                        if (intersection.faceIndex >= 0 && 
+                            intersection.faceIndex < (int)scene.meshes[i].faces.size()) {
+                            textureIds = scene.meshes[i].textureIds;
+                            break;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        case Intersection::Kind::Sphere:
+            if (intersection.containerIndex >= 0 && intersection.containerIndex < (int)scene.spheres.size()) {
+                textureIds = scene.spheres[intersection.containerIndex].textureIds;
+            }
+            break;
+        case Intersection::Kind::Plane:
+            if (intersection.containerIndex >= 0 && intersection.containerIndex < (int)scene.planes.size()) {
+                textureIds = scene.planes[intersection.containerIndex].textureIds;
+            }
+            break;
+        default:
+            break;
+    }
+    
+    return textureIds;
+}
+
 VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersection& intersection) {
     Material* material = intersection.material;
     VectorFloatTriplet color{0.0, 0.0, 0.0};
@@ -1191,7 +1242,113 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         return color;
     }
 
+    std::vector<unsigned int> textureIds = getTextureIdsFromIntersection(scene, intersection);
+    
+    VectorFloatTriplet objectSpacePoint = intersection.point;
+    VectorFloatTriplet objectSpaceNormal = intersection.geometricNormal;
+    
+    // For transformed objects, compute object-space coordinates for proper texture mapping
+    if (intersection.kind == Intersection::Kind::Sphere && 
+        intersection.containerIndex >= 0 && 
+        intersection.containerIndex < (int)scene.spheres.size()) {
+        const Sphere& sphere = scene.spheres[intersection.containerIndex];
+        if (sphere.hasTransformation && sphere.inverseTransformMatrix) {
+            // Transform world point to object space
+            objectSpacePoint = transformPoint(*sphere.inverseTransformMatrix, intersection.point);
+            // Compute object-space normal from object-space point and sphere center
+            VectorFloatTriplet sphereCenter = scene.vertices[sphere.center];
+            objectSpaceNormal = normalize(objectSpacePoint - sphereCenter);
+        }
+    } else if (intersection.kind == Intersection::Kind::Mesh) {
+        int meshIdx = intersection.containerIndex;
+        if (meshIdx == -2) {
+            // Find mesh by material
+            for (size_t i = 0; i < scene.meshes.size(); i++) {
+                if (intersection.faceIndex >= 0 && 
+                    intersection.faceIndex < (int)scene.meshes[i].faces.size() &&
+                    scene.meshes[i].material == intersection.material) {
+                    meshIdx = i;
+                    break;
+                }
+            }
+        }
+        if (meshIdx >= 0 && meshIdx < (int)scene.meshes.size()) {
+            const Mesh& mesh = scene.meshes[meshIdx];
+            if (mesh.hasTransformation && mesh.inverseTransformMatrix) {
+                objectSpacePoint = transformPoint(*mesh.inverseTransformMatrix, intersection.point);
+            }
+        }
+    } else if (intersection.kind == Intersection::Kind::Plane &&
+               intersection.containerIndex >= 0 &&
+               intersection.containerIndex < (int)scene.planes.size()) {
+        const Plane& plane = scene.planes[intersection.containerIndex];
+        if (plane.hasTransformation && plane.inverseTransformMatrix) {
+            objectSpacePoint = transformPoint(*plane.inverseTransformMatrix, intersection.point);
+        }
+    } else if (intersection.kind == Intersection::Kind::Triangle &&
+               intersection.containerIndex >= 0 &&
+               intersection.containerIndex < (int)scene.triangles.size()) {
+        const Triangle& tri = scene.triangles[intersection.containerIndex];
+        if (tri.hasTransformation && tri.inverseTransformMatrix) {
+            objectSpacePoint = transformPoint(*tri.inverseTransformMatrix, intersection.point);
+        }
+    }
+    
+    // Compute UV coordinates using object-space normal for spheres
+    VectorFloatPair uv = computeUVCoordinates(intersection, scene);
+    
+    // Override UV for spheres with object-space normal
+    if (intersection.kind == Intersection::Kind::Sphere) {
+        // Spherical UV mapping: 
+        // u wraps around Y axis, v goes from north to south pole
+        // Negate atan2 to match common texture orientation (Americas on left side)
+        double u = -atan2(objectSpaceNormal.z, objectSpaceNormal.x) / (2.0 * M_PI) + 0.5;
+        double v = acos(std::max(-1.0, std::min(1.0, objectSpaceNormal.y))) / M_PI;
+        // Ensure UV is in [0,1] range (handle wrapping)
+        u = u - floor(u);
+        uv.x = u;
+        uv.y = v;
+    }
+    
+    // Create a mutable copy of material properties for texture application
+    VectorFloatTriplet ambientReflectance = material->ambientReflectance;
+    VectorFloatTriplet diffuseReflectance = material->diffuseReflectance;
+    VectorFloatTriplet specularReflectance = material->specularReflectance;
     VectorFloatTriplet normal = normalize(intersection.shadingNormal);
+    
+    for (unsigned int textureId : textureIds) {
+        const TextureMap* textureMap = scene.getTextureMapById(textureId);
+        if (!textureMap) continue;
+        
+        VectorFloatTriplet texturePosition = (textureMap->type == "perlin" || textureMap->type == "checkerboard") 
+                                              ? objectSpacePoint : intersection.point;
+        VectorFloatTriplet textureValue = sampleTexture(textureMap, uv, texturePosition, &scene, false);
+        
+        if (textureMap->decalMode == DecalMode::ReplaceNormal) {
+            VectorFloatTriplet tangent, bitangent;
+            VectorFloatTriplet up{0.0, 1.0, 0.0};
+            VectorFloatTriplet right{1.0, 0.0, 0.0};
+            if (std::abs(dotProduct(intersection.geometricNormal, up)) < 0.999) {
+                tangent = normalize(crossProduct(intersection.geometricNormal, up));
+            } else {
+                tangent = normalize(crossProduct(intersection.geometricNormal, right));
+            }
+            bitangent = normalize(crossProduct(intersection.geometricNormal, tangent));
+            normal = transformNormalFromTangentSpace(textureValue, tangent, bitangent, intersection.geometricNormal);
+        } else if (textureMap->decalMode == DecalMode::BumpNormal) {
+            VectorFloatTriplet bumpPos = (textureMap->type == "perlin" || textureMap->type == "checkerboard")
+                ? objectSpacePoint
+                : intersection.point;
+            
+            VectorFloatTriplet bumpN = intersection.geometricNormal;
+            if (intersection.kind == Intersection::Kind::Sphere &&
+                (textureMap->type == "perlin" || textureMap->type == "checkerboard")) {
+                bumpN = objectSpaceNormal;
+            }
+            
+            normal = applyBumpMapping(textureMap, uv, bumpPos, bumpN, &scene, textureMap->bumpFactor);
+        }
+    }
     
     if (material->type != "dielectric") {
         if (dotProduct(normal, ray.direction) > 0.0) {
@@ -1199,7 +1356,41 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         }
     }
     
-    color += material->ambientReflectance * scene.ambientLight.intensity;
+    bool replaceAllMode = false;
+    VectorFloatTriplet replaceAllColor{0.0, 0.0, 0.0};
+    
+    for (unsigned int textureId : textureIds) {
+        const TextureMap* textureMap = scene.getTextureMapById(textureId);
+        if (!textureMap) continue;
+        
+        VectorFloatTriplet texturePosition = (textureMap->type == "perlin" || textureMap->type == "checkerboard") 
+                                              ? objectSpacePoint : intersection.point;
+        VectorFloatTriplet textureValue = sampleTexture(textureMap, uv, texturePosition, &scene, true);
+        
+        switch (textureMap->decalMode) {
+            case DecalMode::ReplaceKd:
+                diffuseReflectance = textureValue;
+                break;
+            case DecalMode::BlendKd:
+                diffuseReflectance = (diffuseReflectance + textureValue) * 0.5;
+                break;
+            case DecalMode::ReplaceKs:
+                specularReflectance = textureValue;
+                break;
+            case DecalMode::ReplaceAll:
+                replaceAllMode = true;
+                replaceAllColor = textureValue;
+                break;
+            default:
+                break;
+        }
+    }
+    
+    if (replaceAllMode) {
+        return replaceAllColor;
+    }
+    
+    color += ambientReflectance * scene.ambientLight.intensity;
     if (material->type == "conductor") {
         VectorFloatTriplet viewDir = normalize(-ray.direction);
         double cosTheta = dotProduct(normal, viewDir);
@@ -1229,7 +1420,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
             double specularFactor = std::pow(NdotH, material->phongExponent);
 
             VectorFloatTriplet specular =
-                material->specularReflectance * light.intensity *
+                specularReflectance * light.intensity *
                 (specularFactor * NdotL * attenuation);
 
             color += specular;
@@ -1242,7 +1433,6 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
 
             double halfSize = light.size * 0.5;
 
-            // Use precomputed randoms in [-halfSize, halfSize] for area light sampling
             double ksi_1 = (ray.random1 * 2.0 - 1.0) * halfSize;
             double ksi_2 = (ray.random2 * 2.0 - 1.0) * halfSize;
             VectorFloatTriplet samplePoint = light.position + u * ksi_1 + v * ksi_2;
@@ -1391,7 +1581,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
 
     if (material->isMirror) {
         Ray reflectedRay = reflect(ray,
-                                   intersection.shadingNormal,
+                                   normal,
                                    intersection.point,
                                    scene.shadowRayEpsilon);
         
@@ -1424,7 +1614,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         if (NdotL <= 0.0) continue;
 
         VectorFloatTriplet diffuse =
-            material->diffuseReflectance * light.intensity *
+            diffuseReflectance * light.intensity *
             (NdotL * attenuation);
 
         VectorFloatTriplet viewDir   = normalize(-ray.direction);
@@ -1433,7 +1623,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         double specularFactor = std::pow(NdotH, material->phongExponent);
 
         VectorFloatTriplet specular =
-            material->specularReflectance * light.intensity *
+            specularReflectance * light.intensity *
             (specularFactor * NdotL * attenuation);
 
         color += diffuse + specular;
@@ -1481,12 +1671,12 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         double area = light.size * light.size;
         VectorFloatTriplet irradiance = light.radiance * (cosTheta * cosThetaLight * area / distanceSq);
 
-        VectorFloatTriplet diffuse = material->diffuseReflectance * irradiance;
+        VectorFloatTriplet diffuse = diffuseReflectance * irradiance;
 
         VectorFloatTriplet viewDir = normalize(-ray.direction);
         VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
         double specFactor = std::pow(std::max(0.0, dotProduct(normal, halfVector)), material->phongExponent);
-        VectorFloatTriplet specular = material->specularReflectance * irradiance * specFactor;
+        VectorFloatTriplet specular = specularReflectance * irradiance * specFactor;
 
         color += diffuse + specular;
     }
@@ -1504,12 +1694,56 @@ VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Interse
         return computeShading(scene, ray, intersection);
     }
 
-    // Only primary ray sees background color
-    if (ray.depth == 0) {
-        return scene.backgroundColor;
+    if (scene.backgroundTextureId != 0) {
+        const TextureMap* bgTex = scene.getTextureMapById(scene.backgroundTextureId);
+        if (bgTex && !scene.cameras.empty()) {
+            const Camera& cam = scene.cameras[scene.currentCameraIndex];
+            
+            // Build camera coordinate system
+            VectorFloatTriplet w = -normalize(cam.gaze);
+            VectorFloatTriplet vCam = normalize(cam.up);
+            VectorFloatTriplet uCam = crossProduct(vCam, w);
+            
+            VectorFloatTriplet d = normalize(ray.direction);
+            VectorFloatTriplet gazeDir = normalize(cam.gaze);
+            
+            double denom = dotProduct(d, gazeDir);
+            
+            VectorFloatPair uv;
+            if (std::fabs(denom) > 1e-9) {
+                double numer = cam.nearDistance - dotProduct(ray.origin - cam.position, gazeDir);
+                double t = numer / denom;
+                
+                VectorFloatTriplet hitPoint = ray.origin + d * t;
+                
+                VectorFloatTriplet relPoint = hitPoint - cam.position;
+                
+                double uCoord = dotProduct(relPoint, uCam);
+                double vCoord = dotProduct(relPoint, vCam);
+                
+                double l = cam.nearPlane.x;
+                double r = cam.nearPlane.y;
+                double b = cam.nearPlane.z;
+                double tTop = cam.nearPlane.w;
+                
+                // Convert to UV coordinates [0, 1]
+                uv.x = (uCoord - l) / (r - l);
+                uv.y = (tTop - vCoord) / (tTop - b);
+                
+                // Clamp to [0, 1] for rays that might be outside the image bounds
+                uv.x = std::max(0.0, std::min(1.0, uv.x));
+                uv.y = std::max(0.0, std::min(1.0, uv.y));
+            } else {
+                uv.x = 0.5;
+                uv.y = 0.5;
+            }
+            
+            // The renderer expects [0,255] here, so scale sampled color
+            return sampleTexture(bgTex, uv, ray.origin, &scene, true) * 255.0;
+        }
     }
 
-    return VectorFloatTriplet{0.0, 0.0, 0.0};
+    return scene.backgroundColor;
 }
 
 bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection) {
