@@ -3,6 +3,8 @@
 #include <fstream>
 #include <stdexcept>
 #include <chrono>
+#include <sstream>
+#include <map>
 #include "scene.h"
 #include "utils.h"
 #include "overloads.h"
@@ -1681,6 +1683,271 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         color += diffuse + specular;
     }
 
+    // Directional lights
+    for (const DirectionalLight& light : scene.directionalLights) {
+        VectorFloatTriplet lightDir = normalize(light.direction);
+        
+        // Check if surface is facing the light
+        double NdotL = std::max(0.0, dotProduct(normal, lightDir));
+        if (NdotL <= 0.0) continue;
+        
+        // Shadow test
+        VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+        if (dotProduct(offsetNormal, lightDir) < 0.0) {
+            offsetNormal = -offsetNormal;
+        }
+        Ray shadowRay{
+            intersection.point + scene.shadowRayEpsilon * offsetNormal,
+            lightDir,
+            ray.depth + 1,
+            true,
+            false,
+            false,
+            ray.time
+        };
+        Intersection shadowHit = intersect(scene, shadowRay);
+        if (shadowHit.hit) continue;  // In shadow
+        
+        // No distance attenuation for directional lights
+        VectorFloatTriplet diffuse = diffuseReflectance * light.radiance * NdotL;
+        
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+        double NdotH = std::max(0.0, dotProduct(normal, halfVector));
+        double specularFactor = std::pow(NdotH, material->phongExponent);
+        VectorFloatTriplet specular = specularReflectance * light.radiance * specularFactor;
+        
+        color += diffuse + specular;
+    }
+
+    // Spot lights
+    for (const SpotLight& light : scene.spotLights) {
+        VectorFloatTriplet toLight = light.position - intersection.point;
+        double distanceSq = dotProduct(toLight, toLight);
+        double distance = std::sqrt(distanceSq);
+        VectorFloatTriplet lightDir = toLight * (1.0 / distance);
+        VectorFloatTriplet lightDirection = normalize(light.direction);
+        
+        // Calculate angle between light direction and vector to point
+        double cosAlpha = dotProduct(-lightDir, lightDirection);
+        double alpha = std::acos(std::max(-1.0, std::min(1.0, cosAlpha)));
+        
+        // Convert angles to radians
+        double coverageRad = light.coverageAngle * M_PI / 180.0;
+        double falloffRad = light.falloffAngle * M_PI / 180.0;
+        
+        // Check if point is within coverage angle
+        if (alpha > coverageRad / 2.0) continue;  // Outside coverage cone
+        
+        // Calculate spot attenuation
+        double spotAttenuation = 1.0;
+        if (alpha > falloffRad / 2.0) {
+            // Between falloff and coverage - apply attenuation
+            double cosFalloff = std::cos(falloffRad / 2.0);
+            double cosCoverage = std::cos(coverageRad / 2.0);
+            double cosAlphaVal = std::cos(alpha);
+            spotAttenuation = std::pow((cosAlphaVal - cosCoverage) / (cosFalloff - cosCoverage), 4.0);
+        }
+        
+        // Check if surface is facing the light
+        double NdotL = std::max(0.0, dotProduct(normal, lightDir));
+        if (NdotL <= 0.0) continue;
+        
+        // Shadow test
+        VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+        if (dotProduct(offsetNormal, lightDir) < 0.0) {
+            offsetNormal = -offsetNormal;
+        }
+        Ray shadowRay{
+            intersection.point + scene.shadowRayEpsilon * offsetNormal,
+            lightDir,
+            ray.depth + 1,
+            true,
+            false,
+            false,
+            ray.time
+        };
+        Intersection shadowHit = intersect(scene, shadowRay);
+        if (shadowHit.hit && shadowHit.distance < distance - scene.shadowRayEpsilon) continue;
+        
+        // Distance-based attenuation
+        double attenuation = 1.0 / distanceSq;
+        
+        VectorFloatTriplet diffuse = diffuseReflectance * light.intensity * (NdotL * attenuation * spotAttenuation);
+        
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+        double NdotH = std::max(0.0, dotProduct(normal, halfVector));
+        double specularFactor = std::pow(NdotH, material->phongExponent);
+        VectorFloatTriplet specular = specularReflectance * light.intensity * (specularFactor * NdotL * attenuation * spotAttenuation);
+        
+        color += diffuse + specular;
+    }
+
+    // Environment lights (Spherical Directional Lights)
+    // Only apply to direct illumination (depth 0) to avoid double-counting and reduce noise
+    // Environment lights provide indirect lighting, so they should only be sampled for primary rays
+    if (ray.depth == 0) {
+        for (const SphericalDirectionalLight& light : scene.sphericalDirectionalLights) {
+        const Image* envImage = scene.getImageById(light.imageId);
+        if (!envImage || !envImage->isHDR || !envImage->hdrData) {
+            continue;
+        }
+        
+        // Sample direction from hemisphere
+        VectorFloatTriplet direction;
+        double pdf;
+        bool isCosineWeighted = false;
+        
+        if (light.sampler == "cosine") {
+            // Cosine-weighted hemisphere sampling
+            isCosineWeighted = true;
+            double r1 = ray.random1;
+            double r2 = ray.random2;
+            double cosTheta = std::sqrt(r1);
+            double sinTheta = std::sqrt(1.0 - r1);
+            double phi = 2.0 * M_PI * r2;
+            
+            // Sample in local coordinate system (upper hemisphere)
+            double x = sinTheta * std::cos(phi);
+            double y = cosTheta;  // y is up (cosine-weighted)
+            double z = sinTheta * std::sin(phi);
+            
+            // Transform to world space using surface normal
+            VectorFloatTriplet u, v;
+            orthonormalBasis(normal, u, v);
+            direction = u * x + normal * y + v * z;
+            direction = normalize(direction);
+            
+            pdf = cosTheta / M_PI;  // cos(theta) / pi
+        } else {
+            // Uniform hemisphere sampling
+            isCosineWeighted = false;
+            double r1 = ray.random1;
+            double r2 = ray.random2;
+            double cosTheta = r1;
+            double sinTheta = std::sqrt(1.0 - r1 * r1);
+            double phi = 2.0 * M_PI * r2;
+            
+            double x = sinTheta * std::cos(phi);
+            double y = cosTheta;
+            double z = sinTheta * std::sin(phi);
+            
+            VectorFloatTriplet u, v;
+            orthonormalBasis(normal, u, v);
+            direction = u * x + normal * y + v * z;
+            direction = normalize(direction);
+            
+            pdf = 1.0 / (2.0 * M_PI);
+        }
+        
+        // Convert direction to UV coordinates
+        double u, v;
+        if (light.type == "latlong") {
+            // Latitude-longitude (equirectangular) mapping
+            double clampedY = std::max(-1.0, std::min(1.0, direction.y));
+            // u wraps around Y-axis  
+            u = 0.5 + std::atan2(direction.x, -direction.z) / (2.0 * M_PI);
+            v = std::acos(clampedY) / M_PI;
+        } else {
+            // Spherical (probe) mapping
+            double denom = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+            double r = (1.0 / M_PI) * std::acos(-direction.z);
+            if (denom > 1e-10) {
+                r = r / denom;
+            } else {
+                r = 0.0;  // Handle division by zero
+            }
+            u = (r * direction.x + 1.0) / 2.0;
+            v = (-r * direction.y + 1.0) / 2.0;
+        }
+        
+        // Clamp UV to [0,1]
+        u = std::max(0.0, std::min(1.0, u));
+        v = std::max(0.0, std::min(1.0, v));
+        
+        // Sample from HDR environment map using bilinear interpolation
+        double x = u * (envImage->width - 1);
+        double y = v * (envImage->height - 1);
+        int x0 = (int)floor(x);
+        int y0 = (int)floor(y);
+        int x1 = std::min(x0 + 1, envImage->width - 1);
+        int y1 = std::min(y0 + 1, envImage->height - 1);
+        
+        double fx = x - x0;
+        double fy = y - y0;
+        
+        // Bounds checking - ensure indices are valid and account for channel access
+        int maxIdx = envImage->width * envImage->height * envImage->channels;
+        int idx00 = (y0 * envImage->width + x0) * envImage->channels;
+        int idx10 = (y0 * envImage->width + x1) * envImage->channels;
+        int idx01 = (y1 * envImage->width + x0) * envImage->channels;
+        int idx11 = (y1 * envImage->width + x1) * envImage->channels;
+        
+        // Safety check - skip if indices are out of bounds (account for channel access)
+        int maxChannelOffset = (envImage->channels >= 3) ? 2 : 0;
+        if (idx00 < 0 || (idx00 + maxChannelOffset) >= maxIdx ||
+            idx10 < 0 || (idx10 + maxChannelOffset) >= maxIdx ||
+            idx01 < 0 || (idx01 + maxChannelOffset) >= maxIdx ||
+            idx11 < 0 || (idx11 + maxChannelOffset) >= maxIdx) {
+            continue;  // Skip this environment light sample
+        }
+        
+        VectorFloatTriplet c00, c10, c01, c11;
+        if (envImage->channels >= 3) {
+            c00 = VectorFloatTriplet{envImage->hdrData[idx00], envImage->hdrData[idx00 + 1], envImage->hdrData[idx00 + 2]};
+            c10 = VectorFloatTriplet{envImage->hdrData[idx10], envImage->hdrData[idx10 + 1], envImage->hdrData[idx10 + 2]};
+            c01 = VectorFloatTriplet{envImage->hdrData[idx01], envImage->hdrData[idx01 + 1], envImage->hdrData[idx01 + 2]};
+            c11 = VectorFloatTriplet{envImage->hdrData[idx11], envImage->hdrData[idx11 + 1], envImage->hdrData[idx11 + 2]};
+        } else {
+            double g00 = envImage->hdrData[idx00];
+            double g10 = envImage->hdrData[idx10];
+            double g01 = envImage->hdrData[idx01];
+            double g11 = envImage->hdrData[idx11];
+            c00 = VectorFloatTriplet{g00, g00, g00};
+            c10 = VectorFloatTriplet{g10, g10, g10};
+            c01 = VectorFloatTriplet{g01, g01, g01};
+            c11 = VectorFloatTriplet{g11, g11, g11};
+        }
+        
+        VectorFloatTriplet c0 = c00 * (1.0 - fx) + c10 * fx;
+        VectorFloatTriplet c1 = c01 * (1.0 - fx) + c11 * fx;
+        VectorFloatTriplet radiance = c0 * (1.0 - fy) + c1 * fy;
+        
+        // Check for NaN or Inf values
+        if (std::isnan(radiance.x) || std::isnan(radiance.y) || std::isnan(radiance.z) ||
+            std::isinf(radiance.x) || std::isinf(radiance.y) || std::isinf(radiance.z)) {
+            continue;  // Skip invalid radiance values
+        }
+        
+        // Compute cosine term (NdotL) for material interaction
+        double NdotL = std::max(0.0, dotProduct(normal, direction));
+        if (NdotL <= 0.0) continue;  // Skip if direction is below surface
+        
+        // Multiply by material properties
+        // Monte Carlo estimator: (L_i(ω) * f_r(ω) * cos(θ)) / PDF(ω)
+        // Based on other lights (diffuseReflectance * light.radiance * NdotL), BRDF is f_r = ρ_d (not ρ_d/π)
+        // For cosine-weighted sampling: PDF = cos(θ)/π
+        // Estimator = (L_i * ρ_d * cos(θ)) / (cos(θ)/π) = L_i * ρ_d * π
+        // For uniform sampling: PDF = 1/(2π)
+        // Estimator = (L_i * ρ_d * cos(θ)) / (1/(2π)) = L_i * ρ_d * cos(θ) * 2π
+        VectorFloatTriplet envContribution;
+        if (isCosineWeighted) {
+            // Cosine-weighted sampling with physically correct Lambertian BRDF (ρ/π):
+            // PDF = cos(θ)/π, BRDF = ρ/π, Integrand = L * (ρ/π) * cos(θ)
+            // Estimator = Integrand/PDF = L * (ρ/π) * cos(θ) / (cos(θ)/π) = L * ρ
+            // The π terms cancel out, so no π multiplier needed
+            envContribution = radiance * diffuseReflectance;
+        } else {
+            // Uniform hemisphere sampling with physically correct Lambertian BRDF:
+            // PDF = 1/(2π), BRDF = ρ/π, Integrand = L * (ρ/π) * cos(θ)
+            // Estimator = Integrand/PDF = L * (ρ/π) * cos(θ) * 2π = L * ρ * 2 * cos(θ)
+            envContribution = radiance * diffuseReflectance * NdotL * 2.0;
+        }
+        
+        color += envContribution;
+        }  // End of for loop over environment lights
+    }  // End of if (ray.depth == 0)
 
     return color;
 }
@@ -1692,6 +1959,103 @@ VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Interse
 
     if (intersection.hit) {
         return computeShading(scene, ray, intersection);
+    }
+
+    // For background rays (no hit), sample environment lights directly
+    // Environment lights should contribute to background when rays don't hit anything
+    if (!scene.sphericalDirectionalLights.empty()) {
+        VectorFloatTriplet envColor{0.0, 0.0, 0.0};
+        for (const SphericalDirectionalLight& light : scene.sphericalDirectionalLights) {
+            const Image* envImage = scene.getImageById(light.imageId);
+            if (!envImage || !envImage->isHDR || !envImage->hdrData) continue;
+            
+            // Convert ray direction to UV coordinates for environment map
+            VectorFloatTriplet direction = normalize(ray.direction);
+            double u, v;
+            
+            if (light.type == "latlong") {
+                // Latitude-longitude (equirectangular) mapping
+                double clampedY = std::max(-1.0, std::min(1.0, direction.y));
+                // u wraps around Y-axis
+                u = 0.5 + std::atan2(direction.x, -direction.z) / (2.0 * M_PI);
+                v = std::acos(clampedY) / M_PI;
+            } else {
+                // Spherical (probe) mapping
+                double denom = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+                double r = (1.0 / M_PI) * std::acos(-direction.z);
+                if (denom > 1e-10) {
+                    r = r / denom;
+                } else {
+                    r = 0.0;
+                }
+                u = (r * direction.x + 1.0) / 2.0;
+                v = (-r * direction.y + 1.0) / 2.0;
+            }
+            
+            // Clamp UV to [0,1]
+            u = std::max(0.0, std::min(1.0, u));
+            v = std::max(0.0, std::min(1.0, v));
+            
+            // Sample from HDR environment map using bilinear interpolation
+            double x = u * (envImage->width - 1);
+            double y = v * (envImage->height - 1);
+            int x0 = (int)floor(x);
+            int y0 = (int)floor(y);
+            int x1 = std::min(x0 + 1, envImage->width - 1);
+            int y1 = std::min(y0 + 1, envImage->height - 1);
+            
+            double fx = x - x0;
+            double fy = y - y0;
+            
+            int maxIdx = envImage->width * envImage->height * envImage->channels;
+            int idx00 = (y0 * envImage->width + x0) * envImage->channels;
+            int idx10 = (y0 * envImage->width + x1) * envImage->channels;
+            int idx01 = (y1 * envImage->width + x0) * envImage->channels;
+            int idx11 = (y1 * envImage->width + x1) * envImage->channels;
+            
+            // Bounds check
+            int maxChannelOffset = (envImage->channels >= 3) ? 2 : 0;
+            if (idx00 < 0 || (idx00 + maxChannelOffset) >= maxIdx ||
+                idx10 < 0 || (idx10 + maxChannelOffset) >= maxIdx ||
+                idx01 < 0 || (idx01 + maxChannelOffset) >= maxIdx ||
+                idx11 < 0 || (idx11 + maxChannelOffset) >= maxIdx) {
+                continue;
+            }
+            
+            VectorFloatTriplet c00, c10, c01, c11;
+            if (envImage->channels >= 3) {
+                c00 = VectorFloatTriplet{envImage->hdrData[idx00], envImage->hdrData[idx00 + 1], envImage->hdrData[idx00 + 2]};
+                c10 = VectorFloatTriplet{envImage->hdrData[idx10], envImage->hdrData[idx10 + 1], envImage->hdrData[idx10 + 2]};
+                c01 = VectorFloatTriplet{envImage->hdrData[idx01], envImage->hdrData[idx01 + 1], envImage->hdrData[idx01 + 2]};
+                c11 = VectorFloatTriplet{envImage->hdrData[idx11], envImage->hdrData[idx11 + 1], envImage->hdrData[idx11 + 2]};
+            } else {
+                double g00 = envImage->hdrData[idx00];
+                double g10 = envImage->hdrData[idx10];
+                double g01 = envImage->hdrData[idx01];
+                double g11 = envImage->hdrData[idx11];
+                c00 = VectorFloatTriplet{g00, g00, g00};
+                c10 = VectorFloatTriplet{g10, g10, g10};
+                c01 = VectorFloatTriplet{g01, g01, g01};
+                c11 = VectorFloatTriplet{g11, g11, g11};
+            }
+            
+            VectorFloatTriplet c0 = c00 * (1.0 - fx) + c10 * fx;
+            VectorFloatTriplet c1 = c01 * (1.0 - fx) + c11 * fx;
+            VectorFloatTriplet radiance = c0 * (1.0 - fy) + c1 * fy;
+            
+            // Check for NaN or Inf values
+            if (std::isnan(radiance.x) || std::isnan(radiance.y) || std::isnan(radiance.z) ||
+                std::isinf(radiance.x) || std::isinf(radiance.y) || std::isinf(radiance.z)) {
+                continue;
+            }
+            
+            envColor += radiance;
+        }
+        
+        // If we have environment light contribution, return it (environment maps are the background)
+        if (envColor.x > 0.0 || envColor.y > 0.0 || envColor.z > 0.0) {
+            return envColor;
+        }
     }
 
     if (scene.backgroundTextureId != 0) {
