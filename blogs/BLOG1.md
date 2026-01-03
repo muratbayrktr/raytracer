@@ -66,7 +66,7 @@ Just a minus instead of a plus. lol.
 I also cleaned up the sphere intersection code to just take `min(t1, t2)` instead of checking both intersections separately. Because I wasn't doing that initially, I wasted a couple hours debugging why my spheres looked creepy.
 | Forgot t1/t2 logic | Correct result |
 | --- | --- |
-| ![Spheres with plane bug](./images/broken_examples/spheres_with_plane_forgot_t1_t2_comparison.png) | ![Spheres with plane](./images/spheres_with_plane.png) |
+| ![Spheres with plane bug](./outputs_hw1/broken_examples/spheres_with_plane_forgot_t1_t2_comparison.png) | ![Spheres with plane](./outputs_hw1/spheres_with_plane.png) |
 
 Eventually the spheres with plane scene started rendering correctly with proper lighting and specular highlights. Pretty happy with that.
 
@@ -82,11 +82,11 @@ Here's the progression on the `simple.json` scene:
 
 | Working on specular and diffuse | Nearly correct |
 | --- | --- |
-| ![Simple working on specular and diffuse](./images/broken_examples/simple_working_on_specular_and_diffuse.png) | ![Simple near correct](./images/broken_examples/simple_near_correct.png) |
+| ![Simple working on specular and diffuse](./outputs_hw1/broken_examples/simple_working_on_specular_and_diffuse.png) | ![Simple near correct](./outputs_hw1/broken_examples/simple_near_correct.png) |
 
 And the final result:
 
-![Simple](./images/simple.png)
+![Simple](./outputs_hw1/simple.png)
 
 ## Triangle Intersection: The Barycentric Journey
 
@@ -129,19 +129,19 @@ As soon as I found an intersection in the mesh check, I was returning `true` imm
 
 | Creepy bunny | Fixed bunny |
 | --- | --- |
-| ![Creepy bunny](./images/broken_examples/creepy_bunny.png) | ![Bunny](./images/bunny.png) |
+| ![Creepy bunny](./outputs_hw1/broken_examples/creepy_bunny.png) | ![Bunny](./outputs_hw1/bunny.png) |
 
 There was also an issue with the `simple.json` scene. It was rendering "almost correctly" but not quite. Turned out to be the intersection test epsilon I was using for the `beta` and `gamma` checks. Once I fixed that, it looked good.
 
 | Wrong determinant | Nearly correct |
 | --- | --- |
-| ![Simple wrong det](./images/broken_examples/simple_wrong_det.png) | ![Simple near correct](./images/broken_examples/simple_near_correct.png) |
+| ![Simple wrong det](./outputs_hw1/broken_examples/simple_wrong_det.png) | ![Simple near correct](./outputs_hw1/broken_examples/simple_near_correct.png) |
 
 And I had camera issues too. Some scenes were rendering from completely wrong angles. This was because I wasn't handling non-perpendicular gaze and up vectors correctly, and I hadn't implemented the `lookAt` camera type yet.
 
 | Broken camera view | Fixed view |
 | --- | --- |
-| ![ScienceTree broken](./images/broken_examples/scienceTree_view_broken.png) | ![ScienceTree](./images/scienceTree.png) |
+| ![ScienceTree broken](./outputs_hw1/broken_examples/scienceTree_view_broken.png) | ![ScienceTree](./outputs_hw1/scienceTree.png) |
 
 ## Shadows and Reflections
 
@@ -149,13 +149,13 @@ Shadow rays were actually straightforward once I had the intersection logic work
 
 Reflection was similarly straightforward once the foundation was solid. The usual formula: `r = d - 2(d·n)n`. My raytracer now works with `spheres_mirror.json` and it mostly looks correct, though there's a tiny difference where the big ball touches the plane — it doesn't have quite enough whiteness compared to the ground truth. Could be floating point issues, could be something more serious. I'll investigate that later.
 
-![Spheres mirror](./images/spheres_mirror.png)
+![Spheres mirror](./outputs_hw1/spheres_mirror.png)
 
 Here's the bunny with a plane to show the shadow:
 
 | First attempt | Final |
 | --- | --- |
-| ![Bunny with plane first](./images/broken_examples/bunny_with_plane_first.png) | ![Bunny with plane](./images/bunny_with_plane.png) |
+| ![Bunny with plane first](./outputs_hw1/broken_examples/bunny_with_plane_first.png) | ![Bunny with plane](./outputs_hw1/bunny_with_plane.png) |
 
 
 ## Smooth vs Flat Shading
@@ -164,8 +164,8 @@ While looking at scene files near the deadline, I realized I'd forgotten to impl
 
 | Flat/Messed | Smooth |
 | --- | --- |
-| ![Berserker not smoothed](./images/broken_examples/berserker_smooth_not_smoothed.png) | ![Berserker smoothed](./images/akif_uslu/berserker_smooth.png) |
-| ![Windmill not smoothed](./images/broken_examples/windmill_smooth_not_smoothed.png) | ![Windmill smoothed](./images/akif_uslu/windmill_smooth.png) |
+| ![Berserker not smoothed](./outputs_hw1/broken_examples/berserker_smooth_not_smoothed.png) | ![Berserker smoothed](./outputs_hw1/akif_uslu/berserker_smooth.png) |
+| ![Windmill not smoothed](./outputs_hw1/broken_examples/windmill_smooth_not_smoothed.png) | ![Windmill smoothed](./outputs_hw1/akif_uslu/windmill_smooth.png) |
 
 For smooth shading, I interpolate vertex normals using the barycentric coordinates I already had. It made the meshes look way more realistic.
 
@@ -184,8 +184,8 @@ The implementation works... sometimes. For `bunny.json`, it works perfectly. But
 
 | Without BVH | With BVH (buggy) |
 | --- | --- |
-| ![Cornellbox without BVH](./images/broken_examples/cornellbox_without_bvh.png) | ![Cornellbox with BVH](./images/broken_examples/cornellbox_with_bvh.png) |
-| ![Windmill without BVH](./images/akif_uslu/windmill_smooth.png) | ![Windmill with BVH](./images/broken_examples/windmill_smooth_not_smoothed.png) |
+| ![Cornellbox without BVH](./outputs_hw1/broken_examples/cornellbox_without_bvh.png) | ![Cornellbox with BVH](./outputs_hw1/broken_examples/cornellbox_with_bvh.png) |
+| ![Windmill without BVH](./outputs_hw1/akif_uslu/windmill_smooth.png) | ![Windmill with BVH](./outputs_hw1/broken_examples/windmill_smooth_not_smoothed.png) |
 
 I'll investigate this more in the second homework. There's probably an issue with traversal or leaf node intersection tests.
 
@@ -196,7 +196,7 @@ On the last night (October 29th Night), I tried to implement dielectric refracti
 Here's the ground truth and my result:
 | Ground truth | Mine |
 | --- | --- |
-| ![Cornellbox recursive GT](./images/cornellbox_recursive_gt.png) | ![Cornellbox recursive](./images/cornellbox_recursive.png) |
+| ![Cornellbox recursive GT](./outputs_hw1/cornellbox_recursive_gt.png) | ![Cornellbox recursive](./outputs_hw1/cornellbox_recursive.png) |
 
 ## What I Learned
 
@@ -224,23 +224,23 @@ Since my BVH is buggy, some scenes took forever so I wasn't able to render them.
 Scene Name | Pre-process | Render | Total | BVH | Multi-Thread | BFC | Final Image
 | --- | --- | --- | --- | --- | --- | --- | --- |
 |**Normal Scenes**|
-| `bunny.json` | 18 ms | 34 ms | 52 ms | ✅ | ✅ | ✅ | ![Bunny](./images/bunny.png) |
-| `bunny_with_plane.json` | 19 ms | 221 ms | 240 ms | ✅ | ✅ | ✅ | ![Bunny with Plane](./images/bunny_with_plane.png) |
-| `cornellbox.json` | 0 ms | 99 ms | 99 ms | ❌ | ✅ | ✅ | ![Cornellbox](./images/cornellbox.png) |
-| `cornellbox_recursive.json` | 0 ms | 116 ms | 116 ms | ❌ | ✅ | ✅ | ![Cornellbox Recursive](./images/cornellbox_recursive.png) |
-| `scienceTree_glass.json` | 0 ms | 57396 ms | 57396 ms | ❌ | ✅ | ✅ | ![Science Tree Glass](./images/scienceTree_glass.png) |
-| `scienceTree.json` | 0 ms | 31873 ms | 31873 ms | ❌ | ✅ | ✅ | ![Science Tree](./images/scienceTree.png) |
-| `simple.json` | 0 ms | 48 ms | 48 ms | ❌ | ✅ | ✅ | ![Simple](./images/simple.png) |
-| `spheres_mirror.json` | 0 ms | 118 ms | 118 ms | ❌ | ✅ | ✅ | ![Spheres Mirror](./images/spheres_mirror.png) |
-| `spheres_with_plane.json` | 0 ms | 51 ms | 51 ms | ❌ | ✅ | ✅ | ![Spheres with Plane](./images/spheres_with_plane.png) |
-| `spheres.json` | 0 ms | 68 ms | 68 ms | ❌ | ✅ | ✅ | ![Spheres](./images/spheres.png) |
-| `two_spheres.json` | 0 ms | 20 ms | 20 ms | ❌ | ✅ | ✅ | ![Two Spheres](./images/two_spheres.png) |
+| `bunny.json` | 18 ms | 34 ms | 52 ms | ✅ | ✅ | ✅ | ![Bunny](./outputs_hw1/bunny.png) |
+| `bunny_with_plane.json` | 19 ms | 221 ms | 240 ms | ✅ | ✅ | ✅ | ![Bunny with Plane](./outputs_hw1/bunny_with_plane.png) |
+| `cornellbox.json` | 0 ms | 99 ms | 99 ms | ❌ | ✅ | ✅ | ![Cornellbox](./outputs_hw1/cornellbox.png) |
+| `cornellbox_recursive.json` | 0 ms | 116 ms | 116 ms | ❌ | ✅ | ✅ | ![Cornellbox Recursive](./outputs_hw1/cornellbox_recursive.png) |
+| `scienceTree_glass.json` | 0 ms | 57396 ms | 57396 ms | ❌ | ✅ | ✅ | ![Science Tree Glass](./outputs_hw1/scienceTree_glass.png) |
+| `scienceTree.json` | 0 ms | 31873 ms | 31873 ms | ❌ | ✅ | ✅ | ![Science Tree](./outputs_hw1/scienceTree.png) |
+| `simple.json` | 0 ms | 48 ms | 48 ms | ❌ | ✅ | ✅ | ![Simple](./outputs_hw1/simple.png) |
+| `spheres_mirror.json` | 0 ms | 118 ms | 118 ms | ❌ | ✅ | ✅ | ![Spheres Mirror](./outputs_hw1/spheres_mirror.png) |
+| `spheres_with_plane.json` | 0 ms | 51 ms | 51 ms | ❌ | ✅ | ✅ | ![Spheres with Plane](./outputs_hw1/spheres_with_plane.png) |
+| `spheres.json` | 0 ms | 68 ms | 68 ms | ❌ | ✅ | ✅ | ![Spheres](./outputs_hw1/spheres.png) |
+| `two_spheres.json` | 0 ms | 20 ms | 20 ms | ❌ | ✅ | ✅ | ![Two Spheres](./outputs_hw1/two_spheres.png) |
 |**Raven Scenes**|
-| `rt_david.json` | 550 ms | 266 ms | 816 ms | ✅ | ✅ | ✅ | ![Rt David](./images/raven/David.png) |
-| `rt_raven.json` | 0 ms | 43795 ms | 43795 ms | ❌ | ✅ | ✅ | ![Rt Raven](./images/raven/raven.png) |
-| `rt_utahteapot_mug_ceng.json` | 155 ms | 247 ms | 402 ms | ✅ | ✅ | ✅ | ![Rt David](./images/raven/UtahTeapotMugCENG.png) |
+| `rt_david.json` | 550 ms | 266 ms | 816 ms | ✅ | ✅ | ✅ | ![Rt David](./outputs_hw1/raven/David.png) |
+| `rt_raven.json` | 0 ms | 43795 ms | 43795 ms | ❌ | ✅ | ✅ | ![Rt Raven](./outputs_hw1/raven/raven.png) |
+| `rt_utahteapot_mug_ceng.json` | 155 ms | 247 ms | 402 ms | ✅ | ✅ | ✅ | ![Rt David](./outputs_hw1/raven/UtahTeapotMugCENG.png) |
 |**Akif Uslu Scenes**|
-| `berserker_smooth.json` | 9 ms | 189 ms | 198 ms | ✅ | ✅ | ✅ | ![Berserker Smooth](./images/akif_uslu/berserker_smooth.png) |
-| `Car_smooth.json` | 0 ms | 95361 ms | 95361 ms | ❌ | ✅ | ✅ | ![Car Smooth](./images/akif_uslu/Car_smooth.png) |
-| `Car_front_smooth.json` | 0 ms | 95647 ms | 95647 ms | ❌ | ✅ | ✅ | ![Car Front Smooth](./images/akif_uslu/Car_front_smooth.png) |
-| `windmill_smooth.json` | 0 ms | 127802 ms | 127802 ms | ❌ | ✅ | ✅ | ![Windmill Smooth](./images/akif_uslu/windmill_smooth.png) |
+| `berserker_smooth.json` | 9 ms | 189 ms | 198 ms | ✅ | ✅ | ✅ | ![Berserker Smooth](./outputs_hw1/akif_uslu/berserker_smooth.png) |
+| `Car_smooth.json` | 0 ms | 95361 ms | 95361 ms | ❌ | ✅ | ✅ | ![Car Smooth](./outputs_hw1/akif_uslu/Car_smooth.png) |
+| `Car_front_smooth.json` | 0 ms | 95647 ms | 95647 ms | ❌ | ✅ | ✅ | ![Car Front Smooth](./outputs_hw1/akif_uslu/Car_front_smooth.png) |
+| `windmill_smooth.json` | 0 ms | 127802 ms | 127802 ms | ❌ | ✅ | ✅ | ![Windmill Smooth](./outputs_hw1/akif_uslu/windmill_smooth.png) |
