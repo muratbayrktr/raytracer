@@ -12,8 +12,8 @@
 #include <fstream>
 #include <atomic>
 // #include <SDL3/SDL.h> uncomment this if sdl3 is installed
-#define OUTPUT_PATH "../my_outputs_hw4/"
-#define JSON_OUTPUT_PATH "../my_outputs_hw4/benchmark/"
+#define OUTPUT_PATH "../my_outputs_hw5/"
+#define JSON_OUTPUT_PATH "../my_outputs_hw5/benchmark/"
 using namespace std;
 using namespace scene;
 

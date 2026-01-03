@@ -84,6 +84,14 @@ namespace scene {
     * Scene objects
     * More sophisticated structs that define the scene objects.
     */
+    struct TonemapSettings {
+        std::string tmo;  // "Photographic", "Filmic", "ACES"
+        std::string tmoOptions;  // "key burnOutPercent" as string
+        double saturation;
+        double gamma;
+        std::string extension;  // Extension for output filename
+    };
+
     struct Camera {
         unsigned int _id;
         VectorFloatTriplet position;
@@ -97,6 +105,7 @@ namespace scene {
         int numSamples = 1;  // Perfect square (1, 4, 16, etc.) for jittered sampling
         double apertureSize = 0.0;  // 0 means no depth-of-field
         double focusDistance = 0.0;  // Focus distance for depth-of-field
+        std::vector<TonemapSettings> tonemapSettings;  // Tone mapping settings (can be multiple)
         // Per-pixel per-sample precomputed random dimensions:
         //   x, y : subpixel jitter in [0,1)
         //   z    : motion blur time in [0,1)
@@ -117,6 +126,31 @@ namespace scene {
         VectorFloatTriplet normal;    // Surface normal of the light
         double size;                  // Edge length of the square area light
         VectorFloatTriplet radiance;   // Radiance of the light
+        std::vector<TransformationRef> transformations;
+    };
+
+    struct DirectionalLight {
+        unsigned int _id;
+        VectorFloatTriplet direction;
+        VectorFloatTriplet radiance;
+        std::vector<TransformationRef> transformations;
+    };
+
+    struct SpotLight {
+        unsigned int _id;
+        VectorFloatTriplet position;
+        VectorFloatTriplet direction;
+        VectorFloatTriplet intensity;
+        double coverageAngle;  // in degrees
+        double falloffAngle;  // in degrees
+        std::vector<TransformationRef> transformations;
+    };
+
+    struct SphericalDirectionalLight {
+        unsigned int _id;
+        unsigned int imageId;
+        std::string type;  // "latlong" or "probe"
+        std::string sampler;  // "uniform" or "cosine"
         std::vector<TransformationRef> transformations;
     };
 
@@ -143,10 +177,12 @@ namespace scene {
     struct Image {
         unsigned int _id;
         std::string filename;
-        unsigned char* data = nullptr;
+        unsigned char* data = nullptr;  // For LDR images
+        float* hdrData = nullptr;  // For HDR images (EXR/HDR)
         int width = 0;
         int height = 0;
         int channels = 0;
+        bool isHDR = false;  // True if loaded as HDR
         ~Image();
     };
 
@@ -244,6 +280,9 @@ namespace scene {
         AmbientLight ambientLight;
         std::vector<PointLight> pointLights;
         std::vector<AreaLight> areaLights;
+        std::vector<DirectionalLight> directionalLights;
+        std::vector<SpotLight> spotLights;
+        std::vector<SphericalDirectionalLight> sphericalDirectionalLights;
         std::vector<Material> materials;
         std::map<unsigned int, size_t> materialIdToIndex;
         std::vector<VectorFloatTriplet> vertices;
@@ -325,6 +364,9 @@ namespace scene {
     Camera parseCamera(const json& cameraData);
     PointLight parsePointLight(const json& pointLightData);
     AreaLight parseAreaLight(const json& areaLightData);
+    DirectionalLight parseDirectionalLight(const json& directionalLightData);
+    SpotLight parseSpotLight(const json& spotLightData);
+    SphericalDirectionalLight parseSphericalDirectionalLight(const json& sphericalDirectionalLightData);
     Material parseMaterial(const json& materialData);
     std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
     

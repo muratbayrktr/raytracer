@@ -19,6 +19,10 @@
 #include "stb_image_write.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#define TINYEXR_USE_STB_ZLIB 1
+#define TINYEXR_USE_MINIZ 0
+#define TINYEXR_IMPLEMENTATION
+#include "tinyexr.h"
 
 using json = nlohmann::json;
 
@@ -209,6 +213,69 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         } else {
             verbose("[!] Skipping AreaLight Parsing. Reason: Not found in the scene file.");
         }
+
+        if (lights.contains("DirectionalLight") && !lights["DirectionalLight"].is_null()) {
+            auto directionalLightArray = lights["DirectionalLight"];
+            if (directionalLightArray.is_array()) {
+                for (auto directionalLightData : directionalLightArray) {
+                    scene::DirectionalLight newDirectionalLight = parseDirectionalLight(directionalLightData);
+                    if (newDirectionalLight._id != 0) {
+                        this->directionalLights.push_back(newDirectionalLight);
+                        verbose("[+] DirectionalLight Parsed: " + std::to_string(newDirectionalLight._id));
+                    }
+                }
+            } else {
+                scene::DirectionalLight newDirectionalLight = parseDirectionalLight(directionalLightArray);
+                if (newDirectionalLight._id != 0) {
+                    this->directionalLights.push_back(newDirectionalLight);
+                    verbose("[+] DirectionalLight Parsed: " + std::to_string(newDirectionalLight._id));
+                }
+            }
+        } else {
+            verbose("[!] Skipping DirectionalLight Parsing. Reason: Not found in the scene file.");
+        }
+
+        if (lights.contains("SpotLight") && !lights["SpotLight"].is_null()) {
+            auto spotLightArray = lights["SpotLight"];
+            if (spotLightArray.is_array()) {
+                for (auto spotLightData : spotLightArray) {
+                    scene::SpotLight newSpotLight = parseSpotLight(spotLightData);
+                    if (newSpotLight._id != 0) {
+                        this->spotLights.push_back(newSpotLight);
+                        verbose("[+] SpotLight Parsed: " + std::to_string(newSpotLight._id));
+                    }
+                }
+            } else {
+                scene::SpotLight newSpotLight = parseSpotLight(spotLightArray);
+                if (newSpotLight._id != 0) {
+                    this->spotLights.push_back(newSpotLight);
+                    verbose("[+] SpotLight Parsed: " + std::to_string(newSpotLight._id));
+                }
+            }
+        } else {
+            verbose("[!] Skipping SpotLight Parsing. Reason: Not found in the scene file.");
+        }
+
+        if (lights.contains("SphericalDirectionalLight") && !lights["SphericalDirectionalLight"].is_null()) {
+            auto sphericalDirectionalLightArray = lights["SphericalDirectionalLight"];
+            if (sphericalDirectionalLightArray.is_array()) {
+                for (auto sphericalDirectionalLightData : sphericalDirectionalLightArray) {
+                    scene::SphericalDirectionalLight newSphericalDirectionalLight = parseSphericalDirectionalLight(sphericalDirectionalLightData);
+                    if (newSphericalDirectionalLight._id != 0) {
+                        this->sphericalDirectionalLights.push_back(newSphericalDirectionalLight);
+                        verbose("[+] SphericalDirectionalLight Parsed: " + std::to_string(newSphericalDirectionalLight._id));
+                    }
+                }
+            } else {
+                scene::SphericalDirectionalLight newSphericalDirectionalLight = parseSphericalDirectionalLight(sphericalDirectionalLightArray);
+                if (newSphericalDirectionalLight._id != 0) {
+                    this->sphericalDirectionalLights.push_back(newSphericalDirectionalLight);
+                    verbose("[+] SphericalDirectionalLight Parsed: " + std::to_string(newSphericalDirectionalLight._id));
+                }
+            }
+        } else {
+            verbose("[!] Skipping SphericalDirectionalLight Parsing. Reason: Not found in the scene file.");
+        }
     } else {
         verbose("[!] Skipping Lights Parsing. Reason: Not found in the scene file. Assigning default value: 0");
     }
@@ -395,16 +462,62 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         for (auto& image : this->images) {
             std::string fullPath = this->baseDirectory + image.filename;
             int width, height, channels;
-            unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 0);
-            if (data) {
-                image.data = data;
-                image.width = width;
-                image.height = height;
-                image.channels = channels;
-                verbose("[+] Image loaded: " + image.filename + " (" + std::to_string(width) + "x" + std::to_string(height) + ", " + std::to_string(channels) + " channels)");
+            
+            // Check file extension to determine if it's HDR
+            std::string lowerFilename = image.filename;
+            std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
+            bool isEXR = lowerFilename.length() >= 4 && lowerFilename.substr(lowerFilename.length() - 4) == ".exr";
+            bool isHDR = lowerFilename.length() >= 4 && lowerFilename.substr(lowerFilename.length() - 4) == ".hdr";
+            
+            if (isEXR) {
+                // Load EXR using tinyexr
+                float* rgba = nullptr;
+                const char* err = nullptr;
+                int ret = LoadEXR(&rgba, &width, &height, fullPath.c_str(), &err);
+                if (ret == TINYEXR_SUCCESS) {
+                    image.hdrData = rgba;
+                    image.width = width;
+                    image.height = height;
+                    image.channels = 4;  // EXR loads as RGBA
+                    image.isHDR = true;
+                    verbose("[+] EXR image loaded: " + image.filename + " (" + std::to_string(width) + "x" + std::to_string(height) + ")");
+                } else {
+                    if (err) {
+                        verbose("[!] Failed to load EXR image: " + fullPath + " - " + std::string(err));
+                        FreeEXRErrorMessage(err);
+                    } else {
+                        verbose("[!] Failed to load EXR image: " + fullPath);
+                    }
+                    throw std::runtime_error("Failed to load EXR image: " + fullPath);
+                }
+            } else if (isHDR) {
+                // Load HDR using stbi_loadf
+                float* data = stbi_loadf(fullPath.c_str(), &width, &height, &channels, 0);
+                if (data) {
+                    image.hdrData = data;
+                    image.width = width;
+                    image.height = height;
+                    image.channels = channels;
+                    image.isHDR = true;
+                    verbose("[+] HDR image loaded: " + image.filename + " (" + std::to_string(width) + "x" + std::to_string(height) + ", " + std::to_string(channels) + " channels)");
+                } else {
+                    verbose("[!] Failed to load HDR image: " + fullPath);
+                    throw std::runtime_error("Failed to load HDR image: " + fullPath);
+                }
             } else {
-                verbose("[!] Failed to load image: " + fullPath);
-                throw std::runtime_error("Failed to load image: " + fullPath);
+                // Load LDR image using stbi_load
+                unsigned char* data = stbi_load(fullPath.c_str(), &width, &height, &channels, 0);
+                if (data) {
+                    image.data = data;
+                    image.width = width;
+                    image.height = height;
+                    image.channels = channels;
+                    image.isHDR = false;
+                    verbose("[+] Image loaded: " + image.filename + " (" + std::to_string(width) + "x" + std::to_string(height) + ", " + std::to_string(channels) + " channels)");
+                } else {
+                    verbose("[!] Failed to load image: " + fullPath);
+                    throw std::runtime_error("Failed to load image: " + fullPath);
+                }
             }
         }
         
@@ -603,6 +716,32 @@ scene::Camera scene::parseCamera(const json& cameraData) {
         verbose("[!] Camera FocusDistance not found, using default: 0.0");
     }
     
+    // Parse Tonemap if present (can be object or array)
+    if (cameraData.contains("Tonemap") && !cameraData["Tonemap"].is_null()) {
+        auto tonemapData = cameraData["Tonemap"];
+        if (tonemapData.is_array()) {
+            for (auto tonemapEntry : tonemapData) {
+                TonemapSettings settings;
+                settings.tmo = tonemapEntry["TMO"].get<std::string>();
+                settings.tmoOptions = tonemapEntry["TMOOptions"].get<std::string>();
+                settings.saturation = parseSingleValue<double>(tonemapEntry["Saturation"]);
+                settings.gamma = parseSingleValue<double>(tonemapEntry["Gamma"]);
+                settings.extension = tonemapEntry["Extension"].get<std::string>();
+                newCamera.tonemapSettings.push_back(settings);
+                verbose("[+] Camera Tonemap parsed: " + settings.tmo + " with extension " + settings.extension);
+            }
+        } else {
+            TonemapSettings settings;
+            settings.tmo = tonemapData["TMO"].get<std::string>();
+            settings.tmoOptions = tonemapData["TMOOptions"].get<std::string>();
+            settings.saturation = parseSingleValue<double>(tonemapData["Saturation"]);
+            settings.gamma = parseSingleValue<double>(tonemapData["Gamma"]);
+            settings.extension = tonemapData["Extension"].get<std::string>();
+            newCamera.tonemapSettings.push_back(settings);
+            verbose("[+] Camera Tonemap parsed: " + settings.tmo + " with extension " + settings.extension);
+        }
+    }
+    
     return newCamera;
 }
 
@@ -638,6 +777,68 @@ scene::AreaLight scene::parseAreaLight(const json& areaLightData) {
     }
     
     return newAreaLight;
+}
+
+scene::DirectionalLight scene::parseDirectionalLight(const json& directionalLightData) {
+    scene::DirectionalLight newDirectionalLight;
+    newDirectionalLight._id = parseSingleValue<unsigned int>(directionalLightData["_id"]);
+    newDirectionalLight.direction = parseTriplet<VectorFloatTriplet>(directionalLightData["Direction"]);
+    newDirectionalLight.radiance = parseTriplet<VectorFloatTriplet>(directionalLightData["Radiance"]);
+    
+    // Parse transformations if present
+    if (directionalLightData.contains("Transformations") && !directionalLightData["Transformations"].is_null()) {
+        std::string transformStr = directionalLightData["Transformations"].get<std::string>();
+        newDirectionalLight.transformations = parseTransformationString(transformStr);
+        verbose("[+] DirectionalLight Transformations parsed: " + transformStr + " (" + std::to_string(newDirectionalLight.transformations.size()) + " transforms)");
+    }
+    
+    return newDirectionalLight;
+}
+
+scene::SpotLight scene::parseSpotLight(const json& spotLightData) {
+    scene::SpotLight newSpotLight;
+    newSpotLight._id = parseSingleValue<unsigned int>(spotLightData["_id"]);
+    newSpotLight.position = parseTriplet<VectorFloatTriplet>(spotLightData["Position"]);
+    newSpotLight.direction = parseTriplet<VectorFloatTriplet>(spotLightData["Direction"]);
+    newSpotLight.intensity = parseTriplet<VectorFloatTriplet>(spotLightData["Intensity"]);
+    newSpotLight.coverageAngle = parseSingleValue<double>(spotLightData["CoverageAngle"]);
+    newSpotLight.falloffAngle = parseSingleValue<double>(spotLightData["FalloffAngle"]);
+    
+    // Parse transformations if present
+    if (spotLightData.contains("Transformations") && !spotLightData["Transformations"].is_null()) {
+        std::string transformStr = spotLightData["Transformations"].get<std::string>();
+        newSpotLight.transformations = parseTransformationString(transformStr);
+        verbose("[+] SpotLight Transformations parsed: " + transformStr + " (" + std::to_string(newSpotLight.transformations.size()) + " transforms)");
+    }
+    
+    return newSpotLight;
+}
+
+scene::SphericalDirectionalLight scene::parseSphericalDirectionalLight(const json& sphericalDirectionalLightData) {
+    scene::SphericalDirectionalLight newSphericalDirectionalLight;
+    newSphericalDirectionalLight._id = parseSingleValue<unsigned int>(sphericalDirectionalLightData["_id"]);
+    newSphericalDirectionalLight.imageId = parseSingleValue<unsigned int>(sphericalDirectionalLightData["ImageId"]);
+    
+    if (sphericalDirectionalLightData.contains("_type") && !sphericalDirectionalLightData["_type"].is_null()) {
+        newSphericalDirectionalLight.type = sphericalDirectionalLightData["_type"].get<std::string>();
+    } else {
+        newSphericalDirectionalLight.type = "latlong";  // Default
+    }
+    
+    if (sphericalDirectionalLightData.contains("Sampler") && !sphericalDirectionalLightData["Sampler"].is_null()) {
+        newSphericalDirectionalLight.sampler = sphericalDirectionalLightData["Sampler"].get<std::string>();
+    } else {
+        newSphericalDirectionalLight.sampler = "cosine";  // Default
+    }
+    
+    // Parse transformations if present
+    if (sphericalDirectionalLightData.contains("Transformations") && !sphericalDirectionalLightData["Transformations"].is_null()) {
+        std::string transformStr = sphericalDirectionalLightData["Transformations"].get<std::string>();
+        newSphericalDirectionalLight.transformations = parseTransformationString(transformStr);
+        verbose("[+] SphericalDirectionalLight Transformations parsed: " + transformStr + " (" + std::to_string(newSphericalDirectionalLight.transformations.size()) + " transforms)");
+    }
+    
+    return newSphericalDirectionalLight;
 }
 
 scene::Material scene::parseMaterial(const json& materialData) {
@@ -1489,6 +1690,25 @@ void scene::Scene::precomputeTransformations() {
         }
     }
     
+    for (auto& light : directionalLights) {
+        if (!light.transformations.empty()) {
+            Matrix4x4 lightTransform = buildObjectTransformMatrix(*this, light.transformations);
+            light.direction = normalize(transformDirection(lightTransform, light.direction));
+            verbose("[+] Applied transformation to directional light " + std::to_string(light._id));
+        }
+    }
+    
+    for (auto& light : spotLights) {
+        if (!light.transformations.empty()) {
+            Matrix4x4 lightTransform = buildObjectTransformMatrix(*this, light.transformations);
+            light.position = transformPoint(lightTransform, light.position);
+            light.direction = normalize(transformDirection(lightTransform, light.direction));
+            verbose("[+] Applied transformation to spot light " + std::to_string(light._id));
+        }
+    }
+    
+    // SphericalDirectionalLight doesn't need transformations (uses image lookup)
+    
     verbose("================================================");
 }
 
@@ -1521,6 +1741,18 @@ scene::Image::~Image() {
     if (data) {
         stbi_image_free(data);
         data = nullptr;
+    }
+    if (hdrData) {
+        // For EXR, use free (tinyexr uses malloc)
+        // For HDR loaded with stbi_loadf, use stbi_image_free
+        std::string lowerFilename = filename;
+        std::transform(lowerFilename.begin(), lowerFilename.end(), lowerFilename.begin(), ::tolower);
+        if (lowerFilename.length() >= 4 && lowerFilename.substr(lowerFilename.length() - 4) == ".exr") {
+            free(hdrData);
+        } else {
+            stbi_image_free(hdrData);
+        }
+        hdrData = nullptr;
     }
 }
 
