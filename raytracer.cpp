@@ -11,6 +11,10 @@
 #include <unistd.h>
 #include <fstream>
 #include <atomic>
+#include <algorithm>
+#include <sstream>
+#include "hdr_io.h"
+#include "tonemap.h"
 // #include <SDL3/SDL.h> uncomment this if sdl3 is installed
 #define OUTPUT_PATH "../my_outputs_hw5/"
 #define JSON_OUTPUT_PATH "../my_outputs_hw5/benchmark/"
@@ -148,7 +152,8 @@ VectorFloatTriplet __compute(Scene& scene, Camera& camera, double x, double y, i
     Ray ray = castRay(camera, x, y, width, height, time, random1, random2);
     Intersection intersection = intersect(scene, ray);
     VectorFloatTriplet pixelColor = computePixelColor(scene, ray, intersection);
-    clamp(pixelColor, 0, 255);
+    
+    // Don't clamp for HDR rendering - values can exceed 255
     return pixelColor;
 }
 
@@ -164,7 +169,7 @@ struct ThreadArgs {
     int endY;
     int width;
     int height;
-    unsigned char* image;
+    float* hdrImage;
     std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
 };
 
@@ -202,9 +207,9 @@ void* threadFunction(void* arg) {
                 pixelColor = pixelColor + __compute(*scene, *camera, sx, sy, args->width, args->height, sampleTime, r1, r2);
             }
             pixelColor = pixelColor * (1.0 / camera->numSamples);
-            args->image[pixelIndex * 3 + 0] = (unsigned char) round(pixelColor.x);
-            args->image[pixelIndex * 3 + 1] = (unsigned char) round(pixelColor.y);
-            args->image[pixelIndex * 3 + 2] = (unsigned char) round(pixelColor.z);
+            args->hdrImage[pixelIndex * 3 + 0] = static_cast<float>(pixelColor.x);
+            args->hdrImage[pixelIndex * 3 + 1] = static_cast<float>(pixelColor.y);
+            args->hdrImage[pixelIndex * 3 + 2] = static_cast<float>(pixelColor.z);
             
             int processed = ++g_pixelsProcessed;
             if (processed % 10000 == 0 || processed == g_totalPixels) {
@@ -259,17 +264,16 @@ static void writeIterativeCanvas(Scene& scene,
                                  int width,
                                  int height,
                                  int samplesSoFar,
-                                 unsigned char* image) {
+                                 float* hdrImage) {
+    // For iterative canvas, we'll save as LDR PNG for preview
+    unsigned char* ldrImage = new unsigned char[width * height * 3];
     double invSamples = 1.0 / std::max(1, samplesSoFar);
     for (int i = 0; i < width * height; ++i) {
-        VectorFloatTriplet c = accum[i];
-        c.x *= invSamples;
-        c.y *= invSamples;
-        c.z *= invSamples;
+        VectorFloatTriplet c{hdrImage[i * 3 + 0], hdrImage[i * 3 + 1], hdrImage[i * 3 + 2]};
         clamp(c, 0, 255);
-        image[i * 3 + 0] = (unsigned char) std::round(c.x);
-        image[i * 3 + 1] = (unsigned char) std::round(c.y);
-        image[i * 3 + 2] = (unsigned char) std::round(c.z);
+        ldrImage[i * 3 + 0] = static_cast<unsigned char>(std::round(c.x));
+        ldrImage[i * 3 + 1] = static_cast<unsigned char>(std::round(c.y));
+        ldrImage[i * 3 + 2] = static_cast<unsigned char>(std::round(c.z));
     }
     
     std::string baseName = camera.imageName;
@@ -278,15 +282,16 @@ static void writeIterativeCanvas(Scene& scene,
         baseName = baseName.substr(0, dotPos);
     }
     std::string canvasName = OUTPUT_PATH + baseName + "_iterative.png";
-    scene.writePPM(canvasName.c_str(), image, width, height);
+    scene.writePPM(canvasName.c_str(), ldrImage, width, height);
+    delete[] ldrImage;
 
     // Also update GUI window if enabled
 #if USE_SDL3
-    updateGui(image, width, height);
+    updateGui(ldrImage, width, height);
 #endif
 }
 
-double multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image, bool iterativeSampling) {
+double multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, float* hdrImage, bool iterativeSampling) {
     auto start = std::chrono::high_resolution_clock::now();
 
     int numSamples = camera.numSamples;
@@ -321,7 +326,7 @@ double multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int heig
             threadArgs[t].endY = endY;
             threadArgs[t].width = width;
             threadArgs[t].height = height;
-            threadArgs[t].image = image;
+            threadArgs[t].hdrImage = hdrImage;
             threadArgs[t].startTime = start;
             
             pthread_create(&threads[t], NULL, threadFunction, &threadArgs[t]);
@@ -369,14 +374,27 @@ double multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int heig
 
             // Update canvas every 10th sample
 
-            int samplesSoFar = k;
-            if (samplesSoFar++ % 2 == 0) {
-                writeIterativeCanvas(scene, camera, accum, width, height, samplesSoFar, image);
+            int samplesSoFar = k + 1;
+            if (samplesSoFar % 2 == 0) {
+                // Convert accum to hdrImage for preview
+                double invSamples = 1.0 / samplesSoFar;
+                for (int i = 0; i < width * height; ++i) {
+                    hdrImage[i * 3 + 0] = static_cast<float>(accum[i].x * invSamples);
+                    hdrImage[i * 3 + 1] = static_cast<float>(accum[i].y * invSamples);
+                    hdrImage[i * 3 + 2] = static_cast<float>(accum[i].z * invSamples);
+                }
+                writeIterativeCanvas(scene, camera, accum, width, height, samplesSoFar, hdrImage);
             }
         }
 
-        // Final image after all samples
-        writeIterativeCanvas(scene, camera, accum, width, height, numSamples, image);
+        // Final image after all samples - convert accum to hdrImage
+        double invSamples = 1.0 / numSamples;
+        for (int i = 0; i < width * height; ++i) {
+            hdrImage[i * 3 + 0] = static_cast<float>(accum[i].x * invSamples);
+            hdrImage[i * 3 + 1] = static_cast<float>(accum[i].y * invSamples);
+            hdrImage[i * 3 + 2] = static_cast<float>(accum[i].z * invSamples);
+        }
+        writeIterativeCanvas(scene, camera, accum, width, height, numSamples, hdrImage);
         delete[] accum;
     }
     
@@ -391,7 +409,7 @@ double multiThreadedRayTracing(Scene& scene, Camera& camera, int width, int heig
     return duration.count();
 }
 
-double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, unsigned char* image, bool iterativeSampling) {
+double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int height, float* hdrImage, bool iterativeSampling) {
     auto start = std::chrono::high_resolution_clock::now();
     
     int numSamples = camera.numSamples;
@@ -421,9 +439,9 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
                     pixelColor = pixelColor + __compute(scene, camera, sx, sy, width, height, sampleTime, r1, r2);
                 }
                 pixelColor = pixelColor * (1.0 / camera.numSamples);
-                image[pixelIndex * 3 + 0] = (unsigned char) round(pixelColor.x);
-                image[pixelIndex * 3 + 1] = (unsigned char) round(pixelColor.y);
-                image[pixelIndex * 3 + 2] = (unsigned char) round(pixelColor.z);
+                hdrImage[pixelIndex * 3 + 0] = static_cast<float>(pixelColor.x);
+                hdrImage[pixelIndex * 3 + 1] = static_cast<float>(pixelColor.y);
+                hdrImage[pixelIndex * 3 + 2] = static_cast<float>(pixelColor.z);
                 
                 int processed = ++g_pixelsProcessed;
                 if (processed % 10000 == 0 || processed == g_totalPixels) {
@@ -464,12 +482,25 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
 
             int samplesSoFar = k + 1;
             if (samplesSoFar % 2 == 0) {
-                writeIterativeCanvas(scene, camera, accum, width, height, samplesSoFar, image);
+                // Convert accum to hdrImage for preview
+                double invSamples = 1.0 / samplesSoFar;
+                for (int i = 0; i < width * height; ++i) {
+                    hdrImage[i * 3 + 0] = static_cast<float>(accum[i].x * invSamples);
+                    hdrImage[i * 3 + 1] = static_cast<float>(accum[i].y * invSamples);
+                    hdrImage[i * 3 + 2] = static_cast<float>(accum[i].z * invSamples);
+                }
+                writeIterativeCanvas(scene, camera, accum, width, height, samplesSoFar, hdrImage);
             }
         }
 
-        // Final image
-        writeIterativeCanvas(scene, camera, accum, width, height, numSamples, image);
+        // Final image - convert accum to hdrImage
+        double invSamples = 1.0 / numSamples;
+        for (int i = 0; i < width * height; ++i) {
+            hdrImage[i * 3 + 0] = static_cast<float>(accum[i].x * invSamples);
+            hdrImage[i * 3 + 1] = static_cast<float>(accum[i].y * invSamples);
+            hdrImage[i * 3 + 2] = static_cast<float>(accum[i].z * invSamples);
+        }
+        writeIterativeCanvas(scene, camera, accum, width, height, numSamples, hdrImage);
         delete[] accum;
     }
     
@@ -605,17 +636,61 @@ int main(int argc, char* argv[])
         VectorFloatPenta* samples = new VectorFloatPenta[numSamples * width * height];
         precomputeSamples(numSamples, width, height, samples);
         camera.samples = samples;
-        unsigned char* image = new unsigned char[width * height * 3];
+        float* hdrImage = new float[width * height * 3];
         if (args.isMultiThreaded) {
-            renderTimeMs = multiThreadedRayTracing(scene, camera, width, height, image, args.iterativeSampling);
+            renderTimeMs = multiThreadedRayTracing(scene, camera, width, height, hdrImage, args.iterativeSampling);
             totalTimeMs += renderTimeMs;
         } else {
-            renderTimeMs = singleThreadedRayTracing(scene, camera, width, height, image, args.iterativeSampling);
+            renderTimeMs = singleThreadedRayTracing(scene, camera, width, height, hdrImage, args.iterativeSampling);
             totalTimeMs += renderTimeMs;
         }
         string outputName = camera.imageName;
-        scene.writePPM((OUTPUT_PATH + outputName).c_str(), image, width, height);
-        delete[] image;
+        
+        // Check if output should be HDR
+        bool isHDR = hdr_io::isHDRFile(outputName);
+        
+        if (isHDR) {
+            // Save as HDR file
+            std::string lowerName = outputName;
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+            if (lowerName.length() >= 4 && lowerName.substr(lowerName.length() - 4) == ".exr") {
+                hdr_io::writeEXR((OUTPUT_PATH + outputName).c_str(), hdrImage, width, height);
+            } else {
+                hdr_io::writeHDR((OUTPUT_PATH + outputName).c_str(), hdrImage, width, height);
+            }
+        }
+        
+        // Apply tone mapping if specified
+        if (!camera.tonemapSettings.empty()) {
+            for (const auto& tonemap : camera.tonemapSettings) {
+                unsigned char* ldrImage = new unsigned char[width * height * 3];
+                tonemap::toneMapImage(hdrImage, ldrImage, width, height, tonemap);
+                
+                // Generate output filename with extension
+                std::string baseName = outputName;
+                size_t dotPos = baseName.find_last_of('.');
+                if (dotPos != std::string::npos) {
+                    baseName = baseName.substr(0, dotPos);
+                }
+                std::string tonemappedName = baseName + tonemap.extension;
+                scene.writePPM((OUTPUT_PATH + tonemappedName).c_str(), ldrImage, width, height);
+                delete[] ldrImage;
+            }
+        } else if (!isHDR) {
+            // Backward compatibility: convert HDR to LDR with clamping
+            unsigned char* ldrImage = new unsigned char[width * height * 3];
+            for (int i = 0; i < width * height; ++i) {
+                VectorFloatTriplet c{hdrImage[i * 3 + 0], hdrImage[i * 3 + 1], hdrImage[i * 3 + 2]};
+                clamp(c, 0, 255);
+                ldrImage[i * 3 + 0] = static_cast<unsigned char>(std::round(c.x));
+                ldrImage[i * 3 + 1] = static_cast<unsigned char>(std::round(c.y));
+                ldrImage[i * 3 + 2] = static_cast<unsigned char>(std::round(c.z));
+            }
+            scene.writePPM((OUTPUT_PATH + outputName).c_str(), ldrImage, width, height);
+            delete[] ldrImage;
+        }
+        
+        delete[] hdrImage;
         delete[] samples;
 
         json results = {
