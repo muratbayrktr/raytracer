@@ -139,7 +139,7 @@ VectorFloatTriplet scene::sampleCheckerboard(const TextureMap* textureMap,
 
 VectorFloatTriplet scene::bilinearInterpolation(const Image* image,
                                                 double u, double v) {
-    if (!image || !image->data) {
+    if (!image || (!image->data && !image->hdrData)) {
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
 
@@ -164,20 +164,44 @@ VectorFloatTriplet scene::bilinearInterpolation(const Image* image,
 
     VectorFloatTriplet c00, c10, c01, c11;
 
-    if (image->channels >= 3) {
-        c00 = VectorFloatTriplet{image->data[idx00] / 255.0, image->data[idx00 + 1] / 255.0, image->data[idx00 + 2] / 255.0};
-        c10 = VectorFloatTriplet{image->data[idx10] / 255.0, image->data[idx10 + 1] / 255.0, image->data[idx10 + 2] / 255.0};
-        c01 = VectorFloatTriplet{image->data[idx01] / 255.0, image->data[idx01 + 1] / 255.0, image->data[idx01 + 2] / 255.0};
-        c11 = VectorFloatTriplet{image->data[idx11] / 255.0, image->data[idx11 + 1] / 255.0, image->data[idx11 + 2] / 255.0};
-    } else if (image->channels == 1) {
-        double g00 = image->data[idx00] / 255.0;
-        double g10 = image->data[idx10] / 255.0;
-        double g01 = image->data[idx01] / 255.0;
-        double g11 = image->data[idx11] / 255.0;
-        c00 = VectorFloatTriplet{g00, g00, g00};
-        c10 = VectorFloatTriplet{g10, g10, g10};
-        c01 = VectorFloatTriplet{g01, g01, g01};
-        c11 = VectorFloatTriplet{g11, g11, g11};
+    if (image->isHDR && image->hdrData) {
+        // HDR data is already in float format
+        if (image->channels >= 3) {
+            c00 = VectorFloatTriplet{image->hdrData[idx00], image->hdrData[idx00 + 1], image->hdrData[idx00 + 2]};
+            c10 = VectorFloatTriplet{image->hdrData[idx10], image->hdrData[idx10 + 1], image->hdrData[idx10 + 2]};
+            c01 = VectorFloatTriplet{image->hdrData[idx01], image->hdrData[idx01 + 1], image->hdrData[idx01 + 2]};
+            c11 = VectorFloatTriplet{image->hdrData[idx11], image->hdrData[idx11 + 1], image->hdrData[idx11 + 2]};
+        } else if (image->channels == 1) {
+            double g00 = image->hdrData[idx00];
+            double g10 = image->hdrData[idx10];
+            double g01 = image->hdrData[idx01];
+            double g11 = image->hdrData[idx11];
+            c00 = VectorFloatTriplet{g00, g00, g00};
+            c10 = VectorFloatTriplet{g10, g10, g10};
+            c01 = VectorFloatTriplet{g01, g01, g01};
+            c11 = VectorFloatTriplet{g11, g11, g11};
+        } else {
+            return VectorFloatTriplet{0.0, 0.0, 0.0};
+        }
+    } else if (image->data) {
+        // LDR data needs normalization
+        if (image->channels >= 3) {
+            c00 = VectorFloatTriplet{image->data[idx00] / 255.0, image->data[idx00 + 1] / 255.0, image->data[idx00 + 2] / 255.0};
+            c10 = VectorFloatTriplet{image->data[idx10] / 255.0, image->data[idx10 + 1] / 255.0, image->data[idx10 + 2] / 255.0};
+            c01 = VectorFloatTriplet{image->data[idx01] / 255.0, image->data[idx01 + 1] / 255.0, image->data[idx01 + 2] / 255.0};
+            c11 = VectorFloatTriplet{image->data[idx11] / 255.0, image->data[idx11 + 1] / 255.0, image->data[idx11 + 2] / 255.0};
+        } else if (image->channels == 1) {
+            double g00 = image->data[idx00] / 255.0;
+            double g10 = image->data[idx10] / 255.0;
+            double g01 = image->data[idx01] / 255.0;
+            double g11 = image->data[idx11] / 255.0;
+            c00 = VectorFloatTriplet{g00, g00, g00};
+            c10 = VectorFloatTriplet{g10, g10, g10};
+            c01 = VectorFloatTriplet{g01, g01, g01};
+            c11 = VectorFloatTriplet{g11, g11, g11};
+        } else {
+            return VectorFloatTriplet{0.0, 0.0, 0.0};
+        }
     } else {
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
@@ -190,7 +214,7 @@ VectorFloatTriplet scene::bilinearInterpolation(const Image* image,
 
 VectorFloatTriplet scene::trilinearInterpolation(const Image* image, double u, double v) {
     // Approximates trilinear by blending bilinear with a 2x-downsampled version
-    if (!image || !image->data) {
+    if (!image || (!image->data && !image->hdrData)) {
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
 
@@ -212,11 +236,21 @@ VectorFloatTriplet scene::trilinearInterpolation(const Image* image, double u, d
     int idx = ((y * 2) * image->width + (x * 2)) * image->channels;
     VectorFloatTriplet color1;
     if (image->channels >= 3 && idx + 2 < image->width * image->height * image->channels) {
-        color1 = VectorFloatTriplet{
-            image->data[idx] / 255.0,
-            image->data[idx + 1] / 255.0,
-            image->data[idx + 2] / 255.0
-        };
+        if (image->isHDR && image->hdrData) {
+            color1 = VectorFloatTriplet{
+                image->hdrData[idx],
+                image->hdrData[idx + 1],
+                image->hdrData[idx + 2]
+            };
+        } else if (image->data) {
+            color1 = VectorFloatTriplet{
+                image->data[idx] / 255.0,
+                image->data[idx + 1] / 255.0,
+                image->data[idx + 2] / 255.0
+            };
+        } else {
+            color1 = color0;
+        }
     } else {
         color1 = color0;
     }
@@ -232,7 +266,7 @@ VectorFloatTriplet scene::sampleImageTexture(const TextureMap* textureMap,
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
     const Image* image = scene->getImageById(textureMap->imageId);
-    if (!image || !image->data) {
+    if (!image || (!image->data && !image->hdrData)) {
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
 
@@ -251,15 +285,34 @@ VectorFloatTriplet scene::sampleImageTexture(const TextureMap* textureMap,
             x = std::max(0, std::min(image->width - 1, x));
             y = std::max(0, std::min(image->height - 1, y));
             int idx = (y * image->width + x) * image->channels;
-            if (image->channels >= 3) {
-                result = VectorFloatTriplet{
-                    image->data[idx] / 255.0,
-                    image->data[idx + 1] / 255.0,
-                    image->data[idx + 2] / 255.0
-                };
-            } else if (image->channels == 1) {
-                double gray = image->data[idx] / 255.0;
-                result = VectorFloatTriplet{gray, gray, gray};
+            if (image->isHDR && image->hdrData) {
+                // HDR data is already in float format
+                if (image->channels >= 3) {
+                    result = VectorFloatTriplet{
+                        image->hdrData[idx],
+                        image->hdrData[idx + 1],
+                        image->hdrData[idx + 2]
+                    };
+                } else if (image->channels == 1) {
+                    double gray = image->hdrData[idx];
+                    result = VectorFloatTriplet{gray, gray, gray};
+                } else {
+                    result = VectorFloatTriplet{0.0, 0.0, 0.0};
+                }
+            } else if (image->data) {
+                // LDR data needs normalization
+                if (image->channels >= 3) {
+                    result = VectorFloatTriplet{
+                        image->data[idx] / 255.0,
+                        image->data[idx + 1] / 255.0,
+                        image->data[idx + 2] / 255.0
+                    };
+                } else if (image->channels == 1) {
+                    double gray = image->data[idx] / 255.0;
+                    result = VectorFloatTriplet{gray, gray, gray};
+                } else {
+                    result = VectorFloatTriplet{0.0, 0.0, 0.0};
+                }
             } else {
                 result = VectorFloatTriplet{0.0, 0.0, 0.0};
             }
@@ -469,8 +522,20 @@ VectorFloatTriplet scene::sampleTexture(const TextureMap* textureMap,
     if (textureMap->type == "image") {
         textureValue = sampleImageTexture(textureMap, uv, scene);
         if (applyNormalizer && textureMap->normalizer > 0.0) {
-            double normalizerCorrection = 255.0 / textureMap->normalizer;
-            textureValue = textureValue * normalizerCorrection;
+            // Check if the image is HDR - HDR values are already in proper radiance units
+            const Image* image = scene->getImageById(textureMap->imageId);
+            if (image && image->isHDR) {
+                // For HDR textures, values are already in proper radiance units
+                // Only apply normalizer if it's not 1 (default), to allow user scaling
+                if (textureMap->normalizer != 1.0) {
+                    textureValue = textureValue * (1.0 / textureMap->normalizer);
+                }
+                // Otherwise, keep HDR values as-is
+            } else {
+                // For LDR textures, scale from [0,1] to [0,255/normalizer]
+                double normalizerCorrection = 255.0 / textureMap->normalizer;
+                textureValue = textureValue * normalizerCorrection;
+            }
         }
     } else if (textureMap->type == "perlin") {
         textureValue = samplePerlinNoise(textureMap, position);
