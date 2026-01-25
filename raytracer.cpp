@@ -16,8 +16,8 @@
 #include "hdr_io.h"
 #include "tonemap.h"
 // #include <SDL3/SDL.h> uncomment this if sdl3 is installed
-#define OUTPUT_PATH "../my_outputs_hw5/"
-#define JSON_OUTPUT_PATH "../my_outputs_hw5/benchmark/"
+#define OUTPUT_PATH "../my_outputs_gaussian/"
+#define JSON_OUTPUT_PATH "../my_outputs_gaussian/benchmark/"
 using namespace std;
 using namespace scene;
 

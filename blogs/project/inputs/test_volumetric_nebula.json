@@ -1,0 +1,83 @@
+{
+  "Scene": {
+    "BackgroundColor": "0 0 5",
+    "ShadowRayEpsilon": "1e-3",
+    "IntersectionTestEpsilon": "1e-6",
+    "MaxRecursionDepth": "3",
+    "Cameras": {
+      "Camera": {
+        "_id": "1",
+        "Position": "0 0.5 5",
+        "Gaze": "0 0 -1",
+        "Up": "0 1 0",
+        "NearPlane": "-1.33 1.33 -1 1",
+        "NearDistance": "1",
+        "ImageResolution": "800 600",
+        "ImageName": "test_volumetric_nebula.png"
+      }
+    },
+    "Lights": {
+      "AmbientLight": "25 25 25"
+    },
+    "Materials": {
+      "Material": {
+        "_id": "1",
+        "AmbientReflectance": "0.1 0.1 0.1",
+        "DiffuseReflectance": "0.5 0.5 0.5",
+        "SpecularReflectance": "0.3 0.3 0.3",
+        "PhongExponent": "32"
+      }
+    },
+    "VertexData": {
+      "_data": "0 -2 0",
+      "_type": "xyz"
+    },
+    "Objects": {
+      "Plane": {
+        "_id": "1",
+        "Material": "1",
+        "Point": "1",
+        "Normal": "0 1 0"
+      }
+    },
+    "GaussianFields": [
+      {
+        "_id": 1,
+        "Material": 1,
+        "renderMode": "volumetric",
+        "emissionStrength": 150.0,
+        "densityScale": 1.5,
+        "stepSize": 0.02,
+        "tauHit": 1.0,
+        "maxSteps": 2048,
+        "shadowStepSize": 0.05,
+        "Gaussians": [
+          {
+            "mean": [0, 0, 0],
+            "scales": [1.5, 1.0, 1.5],
+            "color": [1.0, 0.3, 0.5],
+            "weight": 2.0
+          },
+          {
+            "mean": [0.8, 0.5, -0.3],
+            "scales": [0.8, 0.8, 0.8],
+            "color": [0.2, 0.6, 1.0],
+            "weight": 1.5
+          },
+          {
+            "mean": [-0.6, -0.3, 0.4],
+            "scales": [1.0, 1.2, 1.0],
+            "color": [0.8, 0.2, 0.9],
+            "weight": 1.8
+          },
+          {
+            "mean": [0.3, -0.5, -0.6],
+            "scales": [0.9, 0.9, 0.9],
+            "color": [0.9, 0.7, 0.2],
+            "weight": 1.2
+          }
+        ]
+      }
+    ]
+  }
+}

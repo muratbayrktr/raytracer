@@ -264,6 +264,41 @@ namespace scene {
         VectorFloatTriplet normal;
     };
 
+    // Single Gaussian primitive
+    struct Gaussian {
+        VectorFloatTriplet mean;           // μ (center position)
+        VectorFloatTriplet scales;         // σx, σy, σz (diagonal covariance)
+        VectorFloatTriplet color;          // RGB [0,1]
+        double weight;                     // opacity/density multiplier
+        
+        // Precomputed: Σ⁻¹ = diag(1/σx², 1/σy², 1/σz²)
+        VectorFloatTriplet invVariance;    // (1/σx², 1/σy², 1/σz²)
+    };
+
+    // Collection of Gaussians as a single scene object
+    struct GaussianField : public Object {
+        std::vector<Gaussian> gaussians;
+        
+        // Ray marching parameters
+        double stepSize = 0.01;            // dt for marching
+        double tauHit = 1.0;               // optical depth threshold for hit
+        int maxSteps = 2048;               // safety cap
+        double shadowStepSize = 0.02;      // coarser for shadows
+        double tauClamp = 10.0;            // clamp to avoid exp underflow
+        
+        // Rendering mode: "surface" (default) or "volumetric" (new)
+        std::string renderMode = "surface";
+        
+        // Emission multiplier for self-illumination (nebulae glow)
+        double emissionStrength = 1.0;
+        
+        // Density multiplier for opacity accumulation
+        double densityScale = 1.0;
+        
+        // Precomputed global bounds for early-out
+        AABB* bounds = nullptr;
+    };
+
     struct MeshInstance : public Object {
         unsigned int baseMeshId;
         bool resetTransform = false;
@@ -291,6 +326,8 @@ namespace scene {
         std::vector<Sphere> spheres;
         std::vector<Plane> planes;
         std::vector<MeshInstance> meshInstances;
+        std::vector<GaussianField> gaussianFields;
+        std::map<unsigned int, int> gaussianFieldIdToIndex;
         
         // Transformation storage
         std::vector<Translation> translations;
@@ -435,7 +472,7 @@ namespace scene {
         VectorFloatTriplet shadingNormal;
         
 
-        enum class Kind { None, Plane, Sphere, Triangle, Mesh, AreaLight } kind = Kind::None;
+        enum class Kind { None, Plane, Sphere, Triangle, Mesh, AreaLight, GaussianField } kind = Kind::None;
         int containerIndex = -1;
         int faceIndex = -1;
         
@@ -443,6 +480,11 @@ namespace scene {
         double gamma = 0.0;
         
         Material* material = nullptr;
+        
+        // Volumetric contribution (for compositing)
+        bool hasVolumetricContribution = false;
+        VectorFloatTriplet volumetricColor = {0, 0, 0};
+        double volumetricOpacity = 0.0;
     };
 
     struct Args {

@@ -613,6 +613,122 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         verbose("[+] MeshInstances Parsed: " + std::to_string(this->meshInstances.size()));
     }
 
+    // Parse GaussianFields (separate from Objects section)
+    if (scene.contains("GaussianFields") && !scene["GaussianFields"].is_null()) {
+        auto gfArray = scene["GaussianFields"];
+        if (!gfArray.is_array()) {
+            gfArray = json::array({gfArray});
+        }
+        
+        for (auto& gfData : gfArray) {
+            GaussianField field;
+            field._id = gfData.value("_id", 0u);
+            field.stepSize = gfData.value("stepSize", 0.01);
+            field.tauHit = gfData.value("tauHit", 1.0);
+            field.maxSteps = gfData.value("maxSteps", 2048);
+            field.shadowStepSize = gfData.value("shadowStepSize", 0.02);
+            field.tauClamp = gfData.value("tauClamp", 10.0);
+            
+            // Volumetric rendering parameters
+            if (gfData.contains("renderMode") && !gfData["renderMode"].is_null()) {
+                field.renderMode = gfData["renderMode"].get<std::string>();
+            } else {
+                field.renderMode = "surface";  // default for backward compatibility
+            }
+            field.emissionStrength = gfData.value("emissionStrength", 1.0);
+            field.densityScale = gfData.value("densityScale", 1.0);
+            
+            // Material reference
+            if (gfData.contains("Material") && !gfData["Material"].is_null()) {
+                unsigned int matId = gfData["Material"].get<unsigned int>();
+                if (this->materialIdToIndex.count(matId)) {
+                    field.material = &this->materials[this->materialIdToIndex[matId]];
+                }
+            }
+            
+            // Parse transformations if present
+            if (gfData.contains("Transformations") && !gfData["Transformations"].is_null()) {
+                std::string transformStr = gfData["Transformations"].get<std::string>();
+                field.transformations = parseTransformationString(transformStr);
+            }
+            
+            // Parse Textures if present
+            if (gfData.contains("Textures") && !gfData["Textures"].is_null()) {
+                std::string texturesStr = gfData["Textures"].get<std::string>();
+                std::istringstream stream(texturesStr);
+                unsigned int textureId;
+                while (stream >> textureId) {
+                    field.textureIds.push_back(textureId);
+                }
+            }
+            
+            // Parse Gaussians array
+            if (gfData.contains("Gaussians") && !gfData["Gaussians"].is_null()) {
+                auto gaussiansArray = gfData["Gaussians"];
+                if (!gaussiansArray.is_array()) {
+                    gaussiansArray = json::array({gaussiansArray});
+                }
+                
+                for (auto& gData : gaussiansArray) {
+                    Gaussian g;
+                    if (gData.contains("mean") && gData["mean"].is_array() && gData["mean"].size() == 3) {
+                        g.mean = {gData["mean"][0].get<double>(), 
+                                  gData["mean"][1].get<double>(), 
+                                  gData["mean"][2].get<double>()};
+                    }
+                    if (gData.contains("scales") && gData["scales"].is_array() && gData["scales"].size() == 3) {
+                        g.scales = {gData["scales"][0].get<double>(), 
+                                    gData["scales"][1].get<double>(), 
+                                    gData["scales"][2].get<double>()};
+                    }
+                    if (gData.contains("color") && gData["color"].is_array() && gData["color"].size() == 3) {
+                        g.color = {gData["color"][0].get<double>(), 
+                                   gData["color"][1].get<double>(), 
+                                   gData["color"][2].get<double>()};
+                    }
+                    g.weight = gData.value("weight", 1.0);
+                    
+                    // Precompute inverse variance
+                    if (g.scales.x > 1e-10 && g.scales.y > 1e-10 && g.scales.z > 1e-10) {
+                        g.invVariance = {1.0/(g.scales.x*g.scales.x), 
+                                         1.0/(g.scales.y*g.scales.y), 
+                                         1.0/(g.scales.z*g.scales.z)};
+                    } else {
+                        g.invVariance = {1e10, 1e10, 1e10};  // fallback for degenerate scales
+                    }
+                    
+                    field.gaussians.push_back(g);
+                }
+            }
+            
+            // Compute global AABB
+            if (!field.gaussians.empty()) {
+                const double k = 3.0;  // 3-sigma covers 99.7%
+                VectorFloatTriplet minPt = {1e30, 1e30, 1e30};
+                VectorFloatTriplet maxPt = {-1e30, -1e30, -1e30};
+                
+                for (const Gaussian& g : field.gaussians) {
+                    minPt.x = std::min(minPt.x, g.mean.x - k * g.scales.x);
+                    minPt.y = std::min(minPt.y, g.mean.y - k * g.scales.y);
+                    minPt.z = std::min(minPt.z, g.mean.z - k * g.scales.z);
+                    maxPt.x = std::max(maxPt.x, g.mean.x + k * g.scales.x);
+                    maxPt.y = std::max(maxPt.y, g.mean.y + k * g.scales.y);
+                    maxPt.z = std::max(maxPt.z, g.mean.z + k * g.scales.z);
+                }
+                
+                field.bounds = new AABB();
+                field.bounds->min = minPt;
+                field.bounds->max = maxPt;
+            }
+            
+            this->gaussianFields.push_back(field);
+            this->gaussianFieldIdToIndex[field._id] = this->gaussianFields.size() - 1;
+            verbose("[+] GaussianField Parsed: " + std::to_string(field._id) + " with " + std::to_string(field.gaussians.size()) + " Gaussians");
+        }
+        
+        verbose("[+] GaussianFields Parsed: " + std::to_string(this->gaussianFields.size()));
+    }
+
     verbose("================================================");
     verbose("Scene File Parsed Successfully");
     verbose("================================================");

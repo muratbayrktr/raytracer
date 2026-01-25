@@ -1,0 +1,1039 @@
+{
+  "Scene": {
+    "BackgroundColor": "8.0 6.0 4.0",
+    "ShadowRayEpsilon": "1e-3",
+    "MaxRecursionDepth": "3",
+    "Cameras": {
+      "Camera": [
+        {
+          "_id": "1",
+          "Position": "-3.5 -3.5 3.2",
+          "Gaze": "0.55 0.75 -0.1",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "3",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam1.png"
+        },
+        {
+          "_id": "2",
+          "Position": "-5.0 1.0 2.5",
+          "Gaze": "0.85 -0.2 0.0",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "3",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam2_side.png"
+        },
+        {
+          "_id": "3",
+          "Position": "-2.5 -2.0 2.8",
+          "Gaze": "0.45 0.6 -0.2",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "2",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam3_close.png"
+        },
+        {
+          "_id": "4",
+          "Position": "-10.0 -10.0 8.0",
+          "Gaze": "0.7 0.7 -0.5",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "5",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam4_far_front.png"
+        },
+        {
+          "_id": "5",
+          "Position": "-2.0 -15.0 5.0",
+          "Gaze": "0.2 1.0 -0.2",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "5",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam5_wide_side.png"
+        },
+        {
+          "_id": "6",
+          "Position": "-12.0 4.0 12.0",
+          "Gaze": "0.6 -0.15 -0.7",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "5",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam6_aerial.png"
+        },
+        {
+          "_id": "7",
+          "Position": "5.0 -12.0 6.0",
+          "Gaze": "-0.4 0.9 -0.3",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "5",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam7_wide_front.png"
+        },
+        {
+          "_id": "8",
+          "Position": "8.0 0.5 3.0",
+          "Gaze": "-1.0 -0.05 -0.1",
+          "Up": "0.0 0.0 1.0",
+          "NearPlane": "-1.77778 1.77778 -1.0 1.0",
+          "NearDistance": "4",
+          "ImageResolution": "1280 720",
+          "ImageName": "dragon_fire_breath_cam8_head_on.png"
+        }
+      ]
+    },
+    "Lights": {
+      "AmbientLight": "12 8 5",
+      "SpotLight": [
+        {
+          "_id": "1",
+          "Position": "-2 0 12",
+          "Direction": "0.1 0 -1",
+          "Intensity": "40000 15000 5000",
+          "CoverageAngle": "45",
+          "FalloffAngle": "30"
+        },
+        {
+          "_id": "2",
+          "Position": "-2 3 12",
+          "Direction": "0.1 0 -1",
+          "Intensity": "35000 20000 8000",
+          "CoverageAngle": "45",
+          "FalloffAngle": "30"
+        },
+        {
+          "_id": "3",
+          "Position": "2 -15 6",
+          "Direction": "0 1 -0.4",
+          "Intensity": "20000 10000 50000",
+          "CoverageAngle": "45",
+          "FalloffAngle": "30"
+        }
+      ]
+    },
+    "Materials": {
+      "Material": [
+        {
+          "_id": "1",
+          "AmbientReflectance": "1 1 1",
+          "DiffuseReflectance": "0.3 0.3 0.3",
+          "SpecularReflectance": "0.0 0.0 0.0",
+          "MirrorReflectance": "0.5 0.5 0.5",
+          "PhongExponent": "1"
+        },
+        {
+          "_id": "5",
+          "AmbientReflectance": "1 1 1",
+          "DiffuseReflectance": "0.3 0.3 0.3",
+          "SpecularReflectance": "0.0 0.0 0.0",
+          "MirrorReflectance": "0.5 0.5 0.5",
+          "PhongExponent": "1"
+        },
+        {
+          "_id": "11",
+          "AmbientReflectance": "1 1 1",
+          "DiffuseReflectance": "0.8 0.8 0.8",
+          "SpecularReflectance": "0.0 0.0 0.0",
+          "MirrorReflectance": "0.5 0.5 0.5",
+          "PhongExponent": "1"
+        },
+        {
+          "_id": "20",
+          "AmbientReflectance": "0.1 0.08 0.05",
+          "DiffuseReflectance": "0.2 0.15 0.1",
+          "SpecularReflectance": "0.1 0.08 0.05",
+          "PhongExponent": "20"
+        }
+      ]
+    },
+    "Textures": {
+      "TextureMap": {
+        "_id": "1",
+        "_type": "perlin",
+        "DecalMode": "blend_kd",
+        "NoiseConversion": "absval",
+        "NoiseScale": "1",
+        "NumOctaves": "7"
+      }
+    },
+    "VertexData": {
+      "_data": "0 0 0",
+      "_type": "xyz"
+    },
+    "Objects": {
+      "Mesh": [
+        {
+          "_id": "1",
+          "Material": "5",
+          "Faces": {
+            "_plyFile": "../inputs_hw5/dragon/dragon_new_ply_ply/mesh_1.ply"
+          }
+        },
+        {
+          "_id": "2",
+          "Material": "1",
+          "Faces": {
+            "_plyFile": "../inputs_hw5/dragon/dragon_new_ply_ply/mesh_2.ply"
+          }
+        },
+        {
+          "_id": "3",
+          "_shadingMode": "smooth",
+          "Material": "11",
+          "Textures": "1",
+          "Faces": {
+            "_plyFile": "../inputs_hw5/dragon/dragon_new_ply_ply/mesh_3.ply"
+          }
+        }
+      ]
+    },
+    "GaussianFields": [
+      {
+        "_id": 1,
+        "Material": 20,
+        "renderMode": "volumetric",
+        "emissionStrength": 350.0,
+        "densityScale": 4.5,
+        "stepSize": 0.02,
+        "tauHit": 1.0,
+        "maxSteps": 450,
+        "shadowStepSize": 0.04,
+        "Gaussians": [
+          {
+            "mean": [
+              -0.60,
+              0.03,
+              2.42
+            ],
+            "scales": [
+              0.03,
+              0.03,
+              0.03
+            ],
+            "color": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "weight": 1.2
+          },
+          {
+            "mean": [
+              -0.55,
+              0.04,
+              2.38
+            ],
+            "scales": [
+              0.04,
+              0.04,
+              0.04
+            ],
+            "color": [
+              1.0,
+              0.98,
+              0.8
+            ],
+            "weight": 1.1
+          },
+          {
+            "mean": [
+              -0.5,
+              0.05,
+              2.35
+            ],
+            "scales": [
+              0.06,
+              0.06,
+              0.06
+            ],
+            "color": [
+              1.0,
+              0.95,
+              0.65
+            ],
+            "weight": 1.0
+          },
+          {
+            "mean": [
+              -0.3,
+              0.08,
+              2.31
+            ],
+            "scales": [
+              0.08,
+              0.08,
+              0.08
+            ],
+            "color": [
+              1.0,
+              0.9,
+              0.55
+            ],
+            "weight": 0.98
+          },
+          {
+            "mean": [
+              -0.1,
+              0.11,
+              2.27
+            ],
+            "scales": [
+              0.1,
+              0.1,
+              0.1
+            ],
+            "color": [
+              1.0,
+              0.85,
+              0.45
+            ],
+            "weight": 0.96
+          },
+          {
+            "mean": [
+              0.1,
+              0.14,
+              2.23
+            ],
+            "scales": [
+              0.12,
+              0.12,
+              0.12
+            ],
+            "color": [
+              1.0,
+              0.78,
+              0.35
+            ],
+            "weight": 0.94
+          },
+          {
+            "mean": [
+              0.3,
+              0.17,
+              2.19
+            ],
+            "scales": [
+              0.14,
+              0.14,
+              0.14
+            ],
+            "color": [
+              1.0,
+              0.7,
+              0.25
+            ],
+            "weight": 0.92
+          },
+          {
+            "mean": [
+              0.5,
+              0.2,
+              2.15
+            ],
+            "scales": [
+              0.16,
+              0.16,
+              0.16
+            ],
+            "color": [
+              1.0,
+              0.6,
+              0.18
+            ],
+            "weight": 0.9
+          },
+          {
+            "mean": [
+              0.7,
+              0.23,
+              2.11
+            ],
+            "scales": [
+              0.18,
+              0.18,
+              0.18
+            ],
+            "color": [
+              1.0,
+              0.52,
+              0.12
+            ],
+            "weight": 0.88
+          },
+          {
+            "mean": [
+              0.9,
+              0.26,
+              2.07
+            ],
+            "scales": [
+              0.2,
+              0.2,
+              0.2
+            ],
+            "color": [
+              0.98,
+              0.45,
+              0.08
+            ],
+            "weight": 0.85
+          },
+          {
+            "mean": [
+              1.1,
+              0.29,
+              2.03
+            ],
+            "scales": [
+              0.22,
+              0.22,
+              0.22
+            ],
+            "color": [
+              0.95,
+              0.38,
+              0.05
+            ],
+            "weight": 0.82
+          },
+          {
+            "mean": [
+              1.3,
+              0.32,
+              1.99
+            ],
+            "scales": [
+              0.24,
+              0.24,
+              0.24
+            ],
+            "color": [
+              0.9,
+              0.32,
+              0.04
+            ],
+            "weight": 0.78
+          },
+          {
+            "mean": [
+              1.5,
+              0.35,
+              1.95
+            ],
+            "scales": [
+              0.26,
+              0.26,
+              0.26
+            ],
+            "color": [
+              0.85,
+              0.27,
+              0.03
+            ],
+            "weight": 0.74
+          },
+          {
+            "mean": [
+              1.7,
+              0.38,
+              1.91
+            ],
+            "scales": [
+              0.28,
+              0.28,
+              0.28
+            ],
+            "color": [
+              0.78,
+              0.23,
+              0.02
+            ],
+            "weight": 0.7
+          },
+          {
+            "mean": [
+              1.9,
+              0.41,
+              1.87
+            ],
+            "scales": [
+              0.3,
+              0.3,
+              0.3
+            ],
+            "color": [
+              0.7,
+              0.2,
+              0.02
+            ],
+            "weight": 0.66
+          },
+          {
+            "mean": [
+              2.1,
+              0.44,
+              1.83
+            ],
+            "scales": [
+              0.32,
+              0.32,
+              0.32
+            ],
+            "color": [
+              0.62,
+              0.18,
+              0.02
+            ],
+            "weight": 0.62
+          },
+          {
+            "mean": [
+              2.3,
+              0.47,
+              1.79
+            ],
+            "scales": [
+              0.34,
+              0.34,
+              0.34
+            ],
+            "color": [
+              0.55,
+              0.16,
+              0.02
+            ],
+            "weight": 0.58
+          },
+          {
+            "mean": [
+              -0.1,
+              0.11,
+              2.47
+            ],
+            "scales": [
+              0.38,
+              0.38,
+              0.38
+            ],
+            "color": [
+              0.45,
+              0.42,
+              0.38
+            ],
+            "weight": 0.54
+          },
+          {
+            "mean": [
+              0.3,
+              0.17,
+              2.59
+            ],
+            "scales": [
+              0.42,
+              0.42,
+              0.42
+            ],
+            "color": [
+              0.48,
+              0.46,
+              0.42
+            ],
+            "weight": 0.50
+          },
+          {
+            "mean": [
+              0.7,
+              0.23,
+              2.71
+            ],
+            "scales": [
+              0.46,
+              0.46,
+              0.46
+            ],
+            "color": [
+              0.52,
+              0.50,
+              0.47
+            ],
+            "weight": 0.46
+          },
+          {
+            "mean": [
+              1.1,
+              0.29,
+              2.83
+            ],
+            "scales": [
+              0.50,
+              0.50,
+              0.50
+            ],
+            "color": [
+              0.56,
+              0.54,
+              0.52
+            ],
+            "weight": 0.42
+          },
+          {
+            "mean": [
+              1.5,
+              0.35,
+              2.95
+            ],
+            "scales": [
+              0.54,
+              0.54,
+              0.54
+            ],
+            "color": [
+              0.60,
+              0.58,
+              0.56
+            ],
+            "weight": 0.38
+          },
+          {
+            "mean": [
+              1.9,
+              0.41,
+              3.07
+            ],
+            "scales": [
+              0.58,
+              0.58,
+              0.58
+            ],
+            "color": [
+              0.64,
+              0.62,
+              0.60
+            ],
+            "weight": 0.34
+          },
+          {
+            "mean": [
+              2.3,
+              0.47,
+              3.19
+            ],
+            "scales": [
+              0.62,
+              0.62,
+              0.62
+            ],
+            "color": [
+              0.68,
+              0.66,
+              0.64
+            ],
+            "weight": 0.30
+          },
+          {
+            "mean": [
+              2.7,
+              0.53,
+              3.31
+            ],
+            "scales": [
+              0.66,
+              0.66,
+              0.66
+            ],
+            "color": [
+              0.72,
+              0.70,
+              0.68
+            ],
+            "weight": 0.26
+          },
+          {
+            "mean": [
+              -0.5,
+              0.05,
+              2.35
+            ],
+            "scales": [
+              0.07,
+              0.07,
+              0.07
+            ],
+            "color": [
+              1.0,
+              0.92,
+              0.6
+            ],
+            "weight": 0.99
+          },
+          {
+            "mean": [
+              -0.35,
+              0.08,
+              2.32
+            ],
+            "scales": [
+              0.09,
+              0.09,
+              0.09
+            ],
+            "color": [
+              1.0,
+              0.87,
+              0.5
+            ],
+            "weight": 0.97
+          },
+          {
+            "mean": [
+              -0.2,
+              0.11,
+              2.29
+            ],
+            "scales": [
+              0.11,
+              0.11,
+              0.11
+            ],
+            "color": [
+              1.0,
+              0.82,
+              0.4
+            ],
+            "weight": 0.95
+          },
+          {
+            "mean": [
+              -0.05,
+              0.14,
+              2.26
+            ],
+            "scales": [
+              0.13,
+              0.13,
+              0.13
+            ],
+            "color": [
+              1.0,
+              0.74,
+              0.3
+            ],
+            "weight": 0.93
+          },
+          {
+            "mean": [
+              0.1,
+              0.17,
+              2.23
+            ],
+            "scales": [
+              0.15,
+              0.15,
+              0.15
+            ],
+            "color": [
+              1.0,
+              0.65,
+              0.22
+            ],
+            "weight": 0.91
+          },
+          {
+            "mean": [
+              0.25,
+              0.2,
+              2.2
+            ],
+            "scales": [
+              0.17,
+              0.17,
+              0.17
+            ],
+            "color": [
+              0.98,
+              0.56,
+              0.15
+            ],
+            "weight": 0.88
+          },
+          {
+            "mean": [
+              0.4,
+              0.23,
+              2.17
+            ],
+            "scales": [
+              0.19,
+              0.19,
+              0.19
+            ],
+            "color": [
+              0.96,
+              0.48,
+              0.1
+            ],
+            "weight": 0.85
+          },
+          {
+            "mean": [
+              0.55,
+              0.26,
+              2.14
+            ],
+            "scales": [
+              0.21,
+              0.21,
+              0.21
+            ],
+            "color": [
+              0.93,
+              0.4,
+              0.06
+            ],
+            "weight": 0.82
+          },
+          {
+            "mean": [
+              0.7,
+              0.29,
+              2.11
+            ],
+            "scales": [
+              0.23,
+              0.23,
+              0.23
+            ],
+            "color": [
+              0.88,
+              0.34,
+              0.04
+            ],
+            "weight": 0.78
+          },
+          {
+            "mean": [
+              0.85,
+              0.32,
+              2.08
+            ],
+            "scales": [
+              0.25,
+              0.25,
+              0.25
+            ],
+            "color": [
+              0.82,
+              0.29,
+              0.03
+            ],
+            "weight": 0.74
+          },
+          {
+            "mean": [
+              1.0,
+              0.35,
+              2.05
+            ],
+            "scales": [
+              0.27,
+              0.27,
+              0.27
+            ],
+            "color": [
+              0.75,
+              0.25,
+              0.02
+            ],
+            "weight": 0.7
+          },
+          {
+            "mean": [
+              1.15,
+              0.38,
+              2.02
+            ],
+            "scales": [
+              0.29,
+              0.29,
+              0.29
+            ],
+            "color": [
+              0.68,
+              0.21,
+              0.02
+            ],
+            "weight": 0.66
+          },
+          {
+            "mean": [
+              1.3,
+              0.41,
+              1.99
+            ],
+            "scales": [
+              0.31,
+              0.31,
+              0.31
+            ],
+            "color": [
+              0.6,
+              0.18,
+              0.02
+            ],
+            "weight": 0.62
+          },
+          {
+            "mean": [
+              1.45,
+              0.44,
+              1.96
+            ],
+            "scales": [
+              0.33,
+              0.33,
+              0.33
+            ],
+            "color": [
+              0.52,
+              0.16,
+              0.02
+            ],
+            "weight": 0.58
+          },
+          {
+            "mean": [
+              1.9,
+              0.5,
+              3.5
+            ],
+            "scales": [
+              0.75,
+              0.75,
+              0.75
+            ],
+            "color": [
+              0.2,
+              0.18,
+              0.15
+            ],
+            "weight": 0.55
+          },
+          {
+            "mean": [
+              2.4,
+              0.6,
+              3.8
+            ],
+            "scales": [
+              0.85,
+              0.85,
+              0.85
+            ],
+            "color": [
+              0.15,
+              0.13,
+              0.11
+            ],
+            "weight": 0.50
+          },
+          {
+            "mean": [
+              3.0,
+              0.75,
+              4.2
+            ],
+            "scales": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "color": [
+              0.1,
+              0.09,
+              0.08
+            ],
+            "weight": 0.45
+          },
+          {
+            "mean": [
+              3.7,
+              0.9,
+              4.6
+            ],
+            "scales": [
+              1.2,
+              1.2,
+              1.2
+            ],
+            "color": [
+              0.08,
+              0.07,
+              0.07
+            ],
+            "weight": 0.40
+          },
+          {
+            "mean": [
+              4.5,
+              1.1,
+              5.2
+            ],
+            "scales": [
+              1.5,
+              1.5,
+              1.5
+            ],
+            "color": [
+              0.25,
+              0.25,
+              0.25
+            ],
+            "weight": 0.35
+          },
+          {
+            "mean": [
+              5.5,
+              1.4,
+              5.8
+            ],
+            "scales": [
+              1.8,
+              1.8,
+              1.8
+            ],
+            "color": [
+              0.4,
+              0.4,
+              0.4
+            ],
+            "weight": 0.30
+          },
+          {
+            "mean": [
+              6.8,
+              1.8,
+              6.5
+            ],
+            "scales": [
+              2.2,
+              2.2,
+              2.2
+            ],
+            "color": [
+              0.6,
+              0.6,
+              0.6
+            ],
+            "weight": 0.25
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "Scene": {
+    "BackgroundColor": "20 20 40",
+    "ShadowRayEpsilon": "1e-3",
+    "IntersectionTestEpsilon": "1e-6",
+    "MaxRecursionDepth": "3",
+    "Cameras": {
+      "Camera": {
+        "_id": "1",
+        "Position": "0 2 6",
+        "Gaze": "0 -0.3 -1",
+        "Up": "0 1 0",
+        "NearPlane": "-1.33 1.33 -1 1",
+        "NearDistance": "1",
+        "ImageResolution": "800 600",
+        "ImageName": "test_soft_shadow_volumetric.png"
+      }
+    },
+    "Lights": {
+      "AmbientLight": "40 40 40",
+      "PointLight": {
+        "_id": "1",
+        "Position": "0 5 1",
+        "Intensity": "1500 1500 1500"
+      }
+    },
+    "Materials": {
+      "Material": {
+        "_id": "1",
+        "AmbientReflectance": "0.2 0.2 0.2",
+        "DiffuseReflectance": "0.7 0.7 0.7",
+        "SpecularReflectance": "0.4 0.4 0.4",
+        "PhongExponent": "32"
+      }
+    },
+    "VertexData": {
+      "_data": "0 0 0 0 0.6 -2",
+      "_type": "xyz"
+    },
+    "Objects": {
+      "Object": [
+        {
+          "_id": "1",
+          "_type": "Plane",
+          "Material": "1",
+          "Point": "1",
+          "Normal": "0 1 0"
+        },
+        {
+          "_id": "2",
+          "_type": "Sphere",
+          "Material": "1",
+          "Center": "2",
+          "Radius": "0.6"
+        }
+      ]
+    },
+    "GaussianFields": [
+      {
+        "_id": 1,
+        "Material": 1,
+        "renderMode": "volumetric",
+        "emissionStrength": 80.0,
+        "densityScale": 1.0,
+        "stepSize": 0.02,
+        "tauHit": 1.0,
+        "maxSteps": 2048,
+        "shadowStepSize": 0.03,
+        "Gaussians": [
+          {
+            "mean": [0, 2.5, 0],
+            "scales": [1.2, 0.8, 1.2],
+            "color": [0.8, 0.85, 0.9],
+            "weight": 2.0
+          },
+          {
+            "mean": [0.3, 2.3, -0.2],
+            "scales": [0.7, 0.5, 0.7],
+            "color": [0.75, 0.8, 0.9],
+            "weight": 1.5
+          },
+          {
+            "mean": [-0.2, 2.7, 0.1],
+            "scales": [0.8, 0.6, 0.8],
+            "color": [0.7, 0.8, 0.85],
+            "weight": 1.3
+          }
+        ]
+      }
+    ]
+  }
+}

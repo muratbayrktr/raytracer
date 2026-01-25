@@ -44,6 +44,7 @@ std::atomic<long long> g_timeIntersectPlanes(0);
 std::atomic<long long> g_timeIntersectTriangles(0);
 std::atomic<long long> g_timeIntersectMeshes(0);
 std::atomic<long long> g_timeIntersectSpheres(0);
+std::atomic<long long> g_timeIntersectGaussianFields(0);
 std::atomic<long long> g_timeIntersectInstances(0);
 std::atomic<long long> g_timeIntersectPostProcess(0);
 
@@ -873,6 +874,346 @@ bool rayHitsMesh(
     return true;
 }
 
+// Evaluate total density at point x (optimized with spatial culling)
+double gaussianFieldDensity(const GaussianField& field, const VectorFloatTriplet& x) {
+    double rho = 0.0;
+    const double cutoffThreshold = 25.0;  // ~5-sigma cutoff (exp(-0.5 * 25) ≈ 3e-6, negligible)
+    
+    for (const Gaussian& g : field.gaussians) {
+        VectorFloatTriplet d = x - g.mean;
+        
+        // Quick bounding box check: if point is outside 5-sigma bounds, skip
+        double maxScale = std::max({g.scales.x, g.scales.y, g.scales.z});
+        double distSq = d.x * d.x + d.y * d.y + d.z * d.z;
+        if (distSq > 25.0 * maxScale * maxScale) {
+            continue;  // Too far away, contribution is negligible
+        }
+        
+        // Mahalanobis distance: d^T Σ⁻¹ d = dx²/σx² + dy²/σy² + dz²/σz²
+        double exponent = d.x * d.x * g.invVariance.x 
+                        + d.y * d.y * g.invVariance.y 
+                        + d.z * d.z * g.invVariance.z;
+        
+        // Early termination: if exponent is too large, contribution is negligible
+        if (exponent > cutoffThreshold) {
+            continue;
+        }
+        
+        rho += g.weight * std::exp(-0.5 * exponent);
+    }
+    return rho;
+}
+
+// Evaluate gradient of density at point x (for normal computation, optimized)
+VectorFloatTriplet gaussianFieldGradient(const GaussianField& field, const VectorFloatTriplet& x) {
+    VectorFloatTriplet grad = {0, 0, 0};
+    const double cutoffThreshold = 25.0;  // ~5-sigma cutoff
+    
+    for (const Gaussian& g : field.gaussians) {
+        VectorFloatTriplet d = x - g.mean;
+        
+        // Quick bounding box check
+        double maxScale = std::max({g.scales.x, g.scales.y, g.scales.z});
+        double distSq = d.x * d.x + d.y * d.y + d.z * d.z;
+        if (distSq > 25.0 * maxScale * maxScale) {
+            continue;
+        }
+        
+        double exponent = d.x * d.x * g.invVariance.x 
+                        + d.y * d.y * g.invVariance.y 
+                        + d.z * d.z * g.invVariance.z;
+        
+        if (exponent > cutoffThreshold) {
+            continue;
+        }
+        
+        double rho_i = g.weight * std::exp(-0.5 * exponent);
+        // ∇ρ_i = ρ_i * (-Σ⁻¹ d)
+        grad.x += rho_i * (-g.invVariance.x * d.x);
+        grad.y += rho_i * (-g.invVariance.y * d.y);
+        grad.z += rho_i * (-g.invVariance.z * d.z);
+    }
+    return grad;
+}
+
+// Weighted color blend at point x (optimized)
+VectorFloatTriplet gaussianFieldColor(const GaussianField& field, const VectorFloatTriplet& x) {
+    VectorFloatTriplet colorSum = {0, 0, 0};
+    double rhoSum = 0.0;
+    const double eps = 1e-10;
+    const double cutoffThreshold = 25.0;  // ~5-sigma cutoff
+    
+    for (const Gaussian& g : field.gaussians) {
+        VectorFloatTriplet d = x - g.mean;
+        
+        // Quick bounding box check
+        double maxScale = std::max({g.scales.x, g.scales.y, g.scales.z});
+        double distSq = d.x * d.x + d.y * d.y + d.z * d.z;
+        if (distSq > 25.0 * maxScale * maxScale) {
+            continue;
+        }
+        
+        double exponent = d.x * d.x * g.invVariance.x 
+                        + d.y * d.y * g.invVariance.y 
+                        + d.z * d.z * g.invVariance.z;
+        
+        if (exponent > cutoffThreshold) {
+            continue;
+        }
+        
+        double rho_i = g.weight * std::exp(-0.5 * exponent);
+        colorSum = colorSum + g.color * rho_i;
+        rhoSum += rho_i;
+    }
+    
+    if (rhoSum < eps) return {0.5, 0.5, 0.5};  // fallback gray
+    return colorSum * (1.0 / rhoSum);
+}
+
+// OPTIMIZED: Combined density AND color calculation in single pass
+// This avoids iterating through all gaussians twice per step
+void gaussianFieldDensityAndColor(const GaussianField& field, const VectorFloatTriplet& x,
+                                   double& outDensity, VectorFloatTriplet& outColor) {
+    double rho = 0.0;
+    VectorFloatTriplet colorSum = {0, 0, 0};
+    double rhoSum = 0.0;
+    const double cutoffThreshold = 25.0;  // ~5-sigma cutoff
+    const double eps = 1e-10;
+    
+    for (const Gaussian& g : field.gaussians) {
+        VectorFloatTriplet d = x - g.mean;
+        
+        // Quick bounding box check: if point is outside 5-sigma bounds, skip
+        double maxScale = std::max({g.scales.x, g.scales.y, g.scales.z});
+        double distSq = d.x * d.x + d.y * d.y + d.z * d.z;
+        if (distSq > 25.0 * maxScale * maxScale) {
+            continue;  // Too far away, contribution is negligible
+        }
+        
+        // Mahalanobis distance: d^T Σ⁻¹ d = dx²/σx² + dy²/σy² + dz²/σz²
+        double exponent = d.x * d.x * g.invVariance.x 
+                        + d.y * d.y * g.invVariance.y 
+                        + d.z * d.z * g.invVariance.z;
+        
+        // Early termination: if exponent is too large, contribution is negligible
+        if (exponent > cutoffThreshold) {
+            continue;
+        }
+        
+        double rho_i = g.weight * std::exp(-0.5 * exponent);
+        rho += rho_i;
+        colorSum = colorSum + g.color * rho_i;
+        rhoSum += rho_i;
+    }
+    
+    outDensity = rho;
+    outColor = (rhoSum < eps) ? VectorFloatTriplet{0.5, 0.5, 0.5} : colorSum * (1.0 / rhoSum);
+}
+
+// Helper to compute AABB intersection range
+bool computeAABBRange(const AABB& bounds, const Ray& ray, double tMin, double tMax, double& t0, double& t1) {
+    t0 = tMin;
+    t1 = tMax;
+    
+    const VectorFloatTriplet& origin = ray.origin;
+    const VectorFloatTriplet& direction = ray.direction;
+    
+    for (int axis = 0; axis < 3; ++axis) {
+        double dirComponent, originComponent, slabMin, slabMax;
+        switch (axis) {
+            case 0: dirComponent = direction.x; originComponent = origin.x; slabMin = bounds.min.x; slabMax = bounds.max.x; break;
+            case 1: dirComponent = direction.y; originComponent = origin.y; slabMin = bounds.min.y; slabMax = bounds.max.y; break;
+            default: dirComponent = direction.z; originComponent = origin.z; slabMin = bounds.min.z; slabMax = bounds.max.z; break;
+        }
+        
+        if (std::fabs(dirComponent) < 1e-9) {
+            if (originComponent < slabMin || originComponent > slabMax) {
+                return false;
+            }
+            continue;
+        }
+        
+        double invD = 1.0 / dirComponent;
+        double tNear = (slabMin - originComponent) * invD;
+        double tFar = (slabMax - originComponent) * invD;
+        if (tNear > tFar) std::swap(tNear, tFar);
+        
+        t0 = std::max(t0, tNear);
+        t1 = std::min(t1, tFar);
+        if (t1 < t0) {
+            return false;
+        }
+    }
+    
+    return t1 >= t0;
+}
+
+bool rayHitsGaussianField(Ray& ray, const GaussianField& field, 
+                          double& t_min, Intersection& intersection,
+                          int fieldIndex, double minDistance) {
+    // AABB early-out
+    if (field.bounds) {
+        if (!field.bounds->intersect(ray, minDistance, t_min)) {
+            return false;
+        }
+    }
+    
+    // Get march bounds from AABB or use defaults
+    double t0 = std::max(minDistance, 0.001);
+    double t1 = std::min(t_min, 1000.0);  // reasonable max
+    
+    if (field.bounds) {
+        double aabbT0, aabbT1;
+        if (computeAABBRange(*field.bounds, ray, t0, t1, aabbT0, aabbT1)) {
+            t0 = std::max(t0, aabbT0);
+            t1 = std::min(t1, aabbT1);
+        } else {
+            return false;
+        }
+    }
+    
+    double dt = field.stepSize;
+    double tau = 0.0;
+    
+    for (int step = 0; step < field.maxSteps && t0 <= t1; step++, t0 += dt) {
+        VectorFloatTriplet x = ray.origin + ray.direction * t0;
+        double rho = gaussianFieldDensity(field, x);
+        tau += rho * dt;
+        
+        if (tau >= field.tauHit) {
+            // Hit! Compute normal from gradient
+            VectorFloatTriplet grad = gaussianFieldGradient(field, x);
+            double gradLen = std::sqrt(dotProduct(grad, grad));
+            if (gradLen < 1e-10) {
+                // Degenerate gradient, use a default normal
+                grad = {0, 1, 0};
+            } else {
+                grad = grad * (1.0 / gradLen);
+            }
+            VectorFloatTriplet normal = grad;
+            
+            // Flip normal to face ray
+            if (dotProduct(normal, ray.direction) > 0) {
+                normal = -normal;
+            }
+            
+            // Fill intersection record
+            intersection.hit = true;
+            intersection.distance = t0;
+            intersection.point = x;
+            intersection.geometricNormal = normal;
+            intersection.shadingNormal = normal;
+            intersection.kind = Intersection::Kind::GaussianField;
+            intersection.containerIndex = fieldIndex;
+            intersection.material = field.material;
+            
+            t_min = t0;
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Volumetric ray marching with front-to-back alpha compositing
+// Returns accumulated color and opacity
+void rayMarchGaussianVolume(Ray& ray, const GaussianField& field, 
+                            double t_min, double minDistance,
+                            VectorFloatTriplet& accumulatedColor, 
+                            double& accumulatedOpacity) {
+    // AABB early-out
+    if (field.bounds) {
+        if (!field.bounds->intersect(ray, minDistance, t_min)) {
+            return;
+        }
+    }
+    
+    // Get march bounds from AABB or use defaults
+    double t0 = std::max(minDistance, 0.001);
+    double t1 = std::min(t_min, 1000.0);  // reasonable max
+    
+    if (field.bounds) {
+        double aabbT0, aabbT1;
+        if (computeAABBRange(*field.bounds, ray, t0, t1, aabbT0, aabbT1)) {
+            t0 = std::max(t0, aabbT0);
+            t1 = std::min(t1, aabbT1);
+        } else {
+            return;
+        }
+    }
+    
+    double dt = field.stepSize;
+    double opacity = accumulatedOpacity;
+    VectorFloatTriplet color = accumulatedColor;
+    
+    for (int step = 0; step < field.maxSteps && t0 <= t1 && opacity < 0.99; step++, t0 += dt) {
+        VectorFloatTriplet x = ray.origin + ray.direction * t0;
+        
+        // OPTIMIZED: Get density and color in ONE pass through gaussians
+        double density;
+        VectorFloatTriplet gaussianColor;
+        gaussianFieldDensityAndColor(field, x, density, gaussianColor);
+        
+        // Skip steps with negligible density for speed
+        if (density < 1e-6) continue;
+        
+        // Compute alpha from density (Beer's law)
+        double alpha = 1.0 - std::exp(-density * dt * field.densityScale);
+        
+        // Emission term (self-illumination for nebulae)
+        VectorFloatTriplet stepColor = gaussianColor * field.emissionStrength;
+        
+        // Front-to-back compositing
+        // color += (1 - opacity) * alpha * stepColor
+        // opacity += (1 - opacity) * alpha
+        double transmittance = 1.0 - opacity;
+        color = color + stepColor * (transmittance * alpha);
+        opacity = opacity + transmittance * alpha;
+    }
+    
+    accumulatedColor = color;
+    accumulatedOpacity = opacity;
+}
+
+// Compute transmittance T = exp(-tau) along shadow ray through Gaussian fields
+double gaussianFieldTransmittance(const Scene& scene, const Ray& shadowRay, double maxDist) {
+    double totalTau = 0.0;
+    
+    // CRITICAL FIX: Limit maxDist to avoid extremely long loops
+    // Also add a step limit for safety
+    const double maxShadowDist = 100.0;  // Reasonable shadow distance
+    const int maxShadowSteps = 500;       // Safety cap on iterations
+    maxDist = std::min(maxDist, maxShadowDist);
+    
+    for (const GaussianField& field : scene.gaussianFields) {
+        // AABB check - early out if ray doesn't hit the field's bounds
+        if (field.bounds && !field.bounds->intersect(shadowRay, 0.0, maxDist)) {
+            continue;
+        }
+        
+        double dt = field.shadowStepSize;
+        double t = 0.001;
+        int steps = 0;
+        
+        // FIXED: Added step limit to prevent infinite loops
+        while (t < maxDist && totalTau < field.tauClamp && steps < maxShadowSteps) {
+            VectorFloatTriplet x = shadowRay.origin + shadowRay.direction * t;
+            double density = gaussianFieldDensity(field, x);
+            
+            // Skip low-density regions faster
+            if (density < 1e-6) {
+                t += dt * 4.0;  // Larger step in empty space
+            } else {
+                totalTau += density * dt;
+                t += dt;
+            }
+            steps++;
+        }
+    }
+    
+    return std::exp(-totalTau);
+}
+
 Intersection intersect(const Scene& scene, Ray& ray) {
 #if PROFILE_PERF
     auto t_start = std::chrono::high_resolution_clock::now();
@@ -1034,6 +1375,41 @@ Intersection intersect(const Scene& scene, Ray& ray) {
 #if PROFILE_PERF
     auto t_spheres_end = std::chrono::high_resolution_clock::now();
     g_timeIntersectSpheres += std::chrono::duration_cast<std::chrono::nanoseconds>(t_spheres_end - t_spheres_start).count();
+    
+    auto t_gaussian_start = std::chrono::high_resolution_clock::now();
+#endif
+    
+    // Gaussian Fields (ray marching)
+    VectorFloatTriplet volumetricColor = {0, 0, 0};
+    double volumetricOpacity = 0.0;
+    bool hasVolumetric = false;
+    
+    for (int i = 0; i < (int)scene.gaussianFields.size(); i++) {
+        const GaussianField& field = scene.gaussianFields[i];
+        
+        if (field.renderMode == "volumetric") {
+            // Volumetric mode: accumulate color and opacity
+            // Pass current accumulated values so fields composite correctly along the ray
+            rayMarchGaussianVolume(ray, field, t_min, minDistance, volumetricColor, volumetricOpacity);
+            if (volumetricOpacity > 0.0) {
+                hasVolumetric = true;
+            }
+        } else {
+            // Surface mode: use existing hit detection
+            bool thisHit = rayHitsGaussianField(ray, field, t_min, intersection, i, minDistance);
+            hit = thisHit || hit;
+        }
+    }
+    
+    // Store volumetric contribution in intersection
+    if (hasVolumetric) {
+        intersection.hasVolumetricContribution = true;
+        intersection.volumetricColor = volumetricColor;
+        intersection.volumetricOpacity = volumetricOpacity;
+    }
+#if PROFILE_PERF
+    auto t_gaussian_end = std::chrono::high_resolution_clock::now();
+    g_timeIntersectGaussianFields += std::chrono::duration_cast<std::chrono::nanoseconds>(t_gaussian_end - t_gaussian_start).count();
     
     auto t_instances_start = std::chrono::high_resolution_clock::now();
 #endif
@@ -1318,6 +1694,17 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
     VectorFloatTriplet specularReflectance = material->specularReflectance;
     VectorFloatTriplet normal = normalize(intersection.shadingNormal);
     
+    // For GaussianField, use the Gaussian's computed color as diffuse
+    if (intersection.kind == Intersection::Kind::GaussianField &&
+        intersection.containerIndex >= 0 &&
+        intersection.containerIndex < (int)scene.gaussianFields.size()) {
+        const GaussianField& field = scene.gaussianFields[intersection.containerIndex];
+        VectorFloatTriplet gaussianColor = gaussianFieldColor(field, intersection.point);
+        // Use Gaussian color as diffuse, scale by material diffuse for intensity control
+        diffuseReflectance = gaussianColor * material->diffuseReflectance;
+        ambientReflectance = gaussianColor * material->ambientReflectance;
+    }
+    
     for (unsigned int textureId : textureIds) {
         const TextureMap* textureMap = scene.getTextureMapById(textureId);
         if (!textureMap) continue;
@@ -1402,14 +1789,34 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
             material->absorptionIndex
         );
         for (const PointLight& light : scene.pointLights) {
+            double shadowFactor = 1.0;
             if (isInShadow(scene, ray, light, intersection)) {
-                continue;
+                shadowFactor = 0.0;
             }
-
+            // Add Gaussian soft shadows
             VectorFloatTriplet lightVec = light.position - intersection.point;
             double distanceSq = dotProduct(lightVec, lightVec);
-            double distance   = std::sqrt(distanceSq);
+            double distance = std::sqrt(distanceSq);
             VectorFloatTriplet lightDir = lightVec * (1.0 / distance);
+            
+            VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+            if (dotProduct(offsetNormal, lightDir) < 0.0) {
+                offsetNormal = -offsetNormal;
+            }
+            Ray shadowRay{
+                intersection.point + scene.shadowRayEpsilon * offsetNormal,
+                lightDir,
+                0,
+                true,
+                false,
+                false,
+                ray.time,
+                ray.random1,
+                ray.random2
+            };
+            shadowFactor *= gaussianFieldTransmittance(scene, shadowRay, distance);
+            
+            if (shadowFactor < 0.001) continue;
 
             double attenuation = 1.0 / distanceSq;
 
@@ -1425,7 +1832,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
                 specularReflectance * light.intensity *
                 (specularFactor * NdotL * attenuation);
 
-            color += specular;
+            color += specular * shadowFactor;
         }
 
         for (const AreaLight& light : scene.areaLights) {
@@ -1601,14 +2008,34 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
     }
 
     for (const PointLight& light : scene.pointLights) {
+        double shadowFactor = 1.0;
         if (isInShadow(scene, ray, light, intersection)) {
-            continue;
+            shadowFactor = 0.0;
         }
-
+        // Add Gaussian soft shadows
         VectorFloatTriplet lightVec = light.position - intersection.point;
         double distanceSq = dotProduct(lightVec, lightVec);
         double distance = std::sqrt(distanceSq);
         VectorFloatTriplet lightDir = lightVec * (1.0 / distance);
+        
+        VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+        if (dotProduct(offsetNormal, lightDir) < 0.0) {
+            offsetNormal = -offsetNormal;
+        }
+        Ray shadowRay{
+            intersection.point + scene.shadowRayEpsilon * offsetNormal,
+            lightDir,
+            0,
+            true,
+            false,
+            false,
+            ray.time,
+            ray.random1,
+            ray.random2
+        };
+        shadowFactor *= gaussianFieldTransmittance(scene, shadowRay, distance);
+        
+        if (shadowFactor < 0.001) continue;
 
         double attenuation = 1.0 / distanceSq;
 
@@ -1628,7 +2055,7 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
             specularReflectance * light.intensity *
             (specularFactor * NdotL * attenuation);
 
-        color += diffuse + specular;
+        color += (diffuse + specular) * shadowFactor;
     }
 
     for (const AreaLight& light : scene.areaLights) {
@@ -1957,157 +2384,174 @@ VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Interse
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
 
+    VectorFloatTriplet baseColor = {0.0, 0.0, 0.0};
+    
     if (intersection.hit) {
-        return computeShading(scene, ray, intersection);
-    }
-
-    // For background rays (no hit), sample environment lights directly
-    // Environment lights should contribute to background when rays don't hit anything
-    if (!scene.sphericalDirectionalLights.empty()) {
-        VectorFloatTriplet envColor{0.0, 0.0, 0.0};
-        for (const SphericalDirectionalLight& light : scene.sphericalDirectionalLights) {
-            const Image* envImage = scene.getImageById(light.imageId);
-            if (!envImage || !envImage->isHDR || !envImage->hdrData) continue;
-            
-            // Convert ray direction to UV coordinates for environment map
-            VectorFloatTriplet direction = normalize(ray.direction);
-            double u, v;
-            
-            if (light.type == "latlong") {
-                // Latitude-longitude (equirectangular) mapping
-                double clampedY = std::max(-1.0, std::min(1.0, direction.y));
-                // u wraps around Y-axis
-                u = 0.5 + std::atan2(direction.x, -direction.z) / (2.0 * M_PI);
-                v = std::acos(clampedY) / M_PI;
-            } else {
-                // Spherical (probe) mapping
-                double denom = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-                double r = (1.0 / M_PI) * std::acos(-direction.z);
-                if (denom > 1e-10) {
-                    r = r / denom;
+        baseColor = computeShading(scene, ray, intersection);
+    } else {
+        // For background rays (no hit), sample environment lights directly
+        // Environment lights should contribute to background when rays don't hit anything
+        if (!scene.sphericalDirectionalLights.empty()) {
+            VectorFloatTriplet envColor{0.0, 0.0, 0.0};
+            for (const SphericalDirectionalLight& light : scene.sphericalDirectionalLights) {
+                const Image* envImage = scene.getImageById(light.imageId);
+                if (!envImage || !envImage->isHDR || !envImage->hdrData) continue;
+                
+                // Convert ray direction to UV coordinates for environment map
+                VectorFloatTriplet direction = normalize(ray.direction);
+                double u, v;
+                
+                if (light.type == "latlong") {
+                    // Latitude-longitude (equirectangular) mapping
+                    double clampedY = std::max(-1.0, std::min(1.0, direction.y));
+                    // u wraps around Y-axis
+                    u = 0.5 + std::atan2(direction.x, -direction.z) / (2.0 * M_PI);
+                    v = std::acos(clampedY) / M_PI;
                 } else {
-                    r = 0.0;
+                    // Spherical (probe) mapping
+                    double denom = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+                    double r = (1.0 / M_PI) * std::acos(-direction.z);
+                    if (denom > 1e-10) {
+                        r = r / denom;
+                    } else {
+                        r = 0.0;
+                    }
+                    u = (r * direction.x + 1.0) / 2.0;
+                    v = (-r * direction.y + 1.0) / 2.0;
                 }
-                u = (r * direction.x + 1.0) / 2.0;
-                v = (-r * direction.y + 1.0) / 2.0;
+                
+                // Clamp UV to [0,1]
+                u = std::max(0.0, std::min(1.0, u));
+                v = std::max(0.0, std::min(1.0, v));
+                
+                // Sample from HDR environment map using bilinear interpolation
+                double x = u * (envImage->width - 1);
+                double y = v * (envImage->height - 1);
+                int x0 = (int)floor(x);
+                int y0 = (int)floor(y);
+                int x1 = std::min(x0 + 1, envImage->width - 1);
+                int y1 = std::min(y0 + 1, envImage->height - 1);
+                
+                double fx = x - x0;
+                double fy = y - y0;
+                
+                int maxIdx = envImage->width * envImage->height * envImage->channels;
+                int idx00 = (y0 * envImage->width + x0) * envImage->channels;
+                int idx10 = (y0 * envImage->width + x1) * envImage->channels;
+                int idx01 = (y1 * envImage->width + x0) * envImage->channels;
+                int idx11 = (y1 * envImage->width + x1) * envImage->channels;
+                
+                // Bounds check
+                int maxChannelOffset = (envImage->channels >= 3) ? 2 : 0;
+                if (idx00 < 0 || (idx00 + maxChannelOffset) >= maxIdx ||
+                    idx10 < 0 || (idx10 + maxChannelOffset) >= maxIdx ||
+                    idx01 < 0 || (idx01 + maxChannelOffset) >= maxIdx ||
+                    idx11 < 0 || (idx11 + maxChannelOffset) >= maxIdx) {
+                    continue;
+                }
+                
+                VectorFloatTriplet c00, c10, c01, c11;
+                if (envImage->channels >= 3) {
+                    c00 = VectorFloatTriplet{envImage->hdrData[idx00], envImage->hdrData[idx00 + 1], envImage->hdrData[idx00 + 2]};
+                    c10 = VectorFloatTriplet{envImage->hdrData[idx10], envImage->hdrData[idx10 + 1], envImage->hdrData[idx10 + 2]};
+                    c01 = VectorFloatTriplet{envImage->hdrData[idx01], envImage->hdrData[idx01 + 1], envImage->hdrData[idx01 + 2]};
+                    c11 = VectorFloatTriplet{envImage->hdrData[idx11], envImage->hdrData[idx11 + 1], envImage->hdrData[idx11 + 2]};
+                } else {
+                    double g00 = envImage->hdrData[idx00];
+                    double g10 = envImage->hdrData[idx10];
+                    double g01 = envImage->hdrData[idx01];
+                    double g11 = envImage->hdrData[idx11];
+                    c00 = VectorFloatTriplet{g00, g00, g00};
+                    c10 = VectorFloatTriplet{g10, g10, g10};
+                    c01 = VectorFloatTriplet{g01, g01, g01};
+                    c11 = VectorFloatTriplet{g11, g11, g11};
+                }
+                
+                VectorFloatTriplet c0 = c00 * (1.0 - fx) + c10 * fx;
+                VectorFloatTriplet c1 = c01 * (1.0 - fx) + c11 * fx;
+                VectorFloatTriplet radiance = c0 * (1.0 - fy) + c1 * fy;
+                
+                // Check for NaN or Inf values
+                if (std::isnan(radiance.x) || std::isnan(radiance.y) || std::isnan(radiance.z) ||
+                    std::isinf(radiance.x) || std::isinf(radiance.y) || std::isinf(radiance.z)) {
+                    continue;
+                }
+                
+                envColor += radiance;
             }
             
-            // Clamp UV to [0,1]
-            u = std::max(0.0, std::min(1.0, u));
-            v = std::max(0.0, std::min(1.0, v));
-            
-            // Sample from HDR environment map using bilinear interpolation
-            double x = u * (envImage->width - 1);
-            double y = v * (envImage->height - 1);
-            int x0 = (int)floor(x);
-            int y0 = (int)floor(y);
-            int x1 = std::min(x0 + 1, envImage->width - 1);
-            int y1 = std::min(y0 + 1, envImage->height - 1);
-            
-            double fx = x - x0;
-            double fy = y - y0;
-            
-            int maxIdx = envImage->width * envImage->height * envImage->channels;
-            int idx00 = (y0 * envImage->width + x0) * envImage->channels;
-            int idx10 = (y0 * envImage->width + x1) * envImage->channels;
-            int idx01 = (y1 * envImage->width + x0) * envImage->channels;
-            int idx11 = (y1 * envImage->width + x1) * envImage->channels;
-            
-            // Bounds check
-            int maxChannelOffset = (envImage->channels >= 3) ? 2 : 0;
-            if (idx00 < 0 || (idx00 + maxChannelOffset) >= maxIdx ||
-                idx10 < 0 || (idx10 + maxChannelOffset) >= maxIdx ||
-                idx01 < 0 || (idx01 + maxChannelOffset) >= maxIdx ||
-                idx11 < 0 || (idx11 + maxChannelOffset) >= maxIdx) {
-                continue;
+            // If we have environment light contribution, use it
+            if (envColor.x > 0.0 || envColor.y > 0.0 || envColor.z > 0.0) {
+                baseColor = envColor;
             }
-            
-            VectorFloatTriplet c00, c10, c01, c11;
-            if (envImage->channels >= 3) {
-                c00 = VectorFloatTriplet{envImage->hdrData[idx00], envImage->hdrData[idx00 + 1], envImage->hdrData[idx00 + 2]};
-                c10 = VectorFloatTriplet{envImage->hdrData[idx10], envImage->hdrData[idx10 + 1], envImage->hdrData[idx10 + 2]};
-                c01 = VectorFloatTriplet{envImage->hdrData[idx01], envImage->hdrData[idx01 + 1], envImage->hdrData[idx01 + 2]};
-                c11 = VectorFloatTriplet{envImage->hdrData[idx11], envImage->hdrData[idx11 + 1], envImage->hdrData[idx11 + 2]};
-            } else {
-                double g00 = envImage->hdrData[idx00];
-                double g10 = envImage->hdrData[idx10];
-                double g01 = envImage->hdrData[idx01];
-                double g11 = envImage->hdrData[idx11];
-                c00 = VectorFloatTriplet{g00, g00, g00};
-                c10 = VectorFloatTriplet{g10, g10, g10};
-                c01 = VectorFloatTriplet{g01, g01, g01};
-                c11 = VectorFloatTriplet{g11, g11, g11};
-            }
-            
-            VectorFloatTriplet c0 = c00 * (1.0 - fx) + c10 * fx;
-            VectorFloatTriplet c1 = c01 * (1.0 - fx) + c11 * fx;
-            VectorFloatTriplet radiance = c0 * (1.0 - fy) + c1 * fy;
-            
-            // Check for NaN or Inf values
-            if (std::isnan(radiance.x) || std::isnan(radiance.y) || std::isnan(radiance.z) ||
-                std::isinf(radiance.x) || std::isinf(radiance.y) || std::isinf(radiance.z)) {
-                continue;
-            }
-            
-            envColor += radiance;
         }
         
-        // If we have environment light contribution, return it (environment maps are the background)
-        if (envColor.x > 0.0 || envColor.y > 0.0 || envColor.z > 0.0) {
-            return envColor;
-        }
-    }
-
-    if (scene.backgroundTextureId != 0) {
-        const TextureMap* bgTex = scene.getTextureMapById(scene.backgroundTextureId);
-        if (bgTex && !scene.cameras.empty()) {
-            const Camera& cam = scene.cameras[scene.currentCameraIndex];
-            
-            // Build camera coordinate system
-            VectorFloatTriplet w = -normalize(cam.gaze);
-            VectorFloatTriplet vCam = normalize(cam.up);
-            VectorFloatTriplet uCam = crossProduct(vCam, w);
-            
-            VectorFloatTriplet d = normalize(ray.direction);
-            VectorFloatTriplet gazeDir = normalize(cam.gaze);
-            
-            double denom = dotProduct(d, gazeDir);
-            
-            VectorFloatPair uv;
-            if (std::fabs(denom) > 1e-9) {
-                double numer = cam.nearDistance - dotProduct(ray.origin - cam.position, gazeDir);
-                double t = numer / denom;
-                
-                VectorFloatTriplet hitPoint = ray.origin + d * t;
-                
-                VectorFloatTriplet relPoint = hitPoint - cam.position;
-                
-                double uCoord = dotProduct(relPoint, uCam);
-                double vCoord = dotProduct(relPoint, vCam);
-                
-                double l = cam.nearPlane.x;
-                double r = cam.nearPlane.y;
-                double b = cam.nearPlane.z;
-                double tTop = cam.nearPlane.w;
-                
-                // Convert to UV coordinates [0, 1]
-                uv.x = (uCoord - l) / (r - l);
-                uv.y = (tTop - vCoord) / (tTop - b);
-                
-                // Clamp to [0, 1] for rays that might be outside the image bounds
-                uv.x = std::max(0.0, std::min(1.0, uv.x));
-                uv.y = std::max(0.0, std::min(1.0, uv.y));
-            } else {
-                uv.x = 0.5;
-                uv.y = 0.5;
+        if (baseColor.x == 0.0 && baseColor.y == 0.0 && baseColor.z == 0.0) {
+            // Try background texture
+            if (scene.backgroundTextureId != 0) {
+                const TextureMap* bgTex = scene.getTextureMapById(scene.backgroundTextureId);
+                if (bgTex && !scene.cameras.empty()) {
+                    const Camera& cam = scene.cameras[scene.currentCameraIndex];
+                    
+                    // Build camera coordinate system
+                    VectorFloatTriplet w = -normalize(cam.gaze);
+                    VectorFloatTriplet vCam = normalize(cam.up);
+                    VectorFloatTriplet uCam = crossProduct(vCam, w);
+                    
+                    VectorFloatTriplet d = normalize(ray.direction);
+                    VectorFloatTriplet gazeDir = normalize(cam.gaze);
+                    
+                    double denom = dotProduct(d, gazeDir);
+                    
+                    VectorFloatPair uv;
+                    if (std::fabs(denom) > 1e-9) {
+                        double numer = cam.nearDistance - dotProduct(ray.origin - cam.position, gazeDir);
+                        double t = numer / denom;
+                        
+                        VectorFloatTriplet hitPoint = ray.origin + d * t;
+                        
+                        VectorFloatTriplet relPoint = hitPoint - cam.position;
+                        
+                        double uCoord = dotProduct(relPoint, uCam);
+                        double vCoord = dotProduct(relPoint, vCam);
+                        
+                        double l = cam.nearPlane.x;
+                        double r = cam.nearPlane.y;
+                        double b = cam.nearPlane.z;
+                        double tTop = cam.nearPlane.w;
+                        
+                        // Convert to UV coordinates [0, 1]
+                        uv.x = (uCoord - l) / (r - l);
+                        uv.y = (tTop - vCoord) / (tTop - b);
+                        
+                        // Clamp to [0, 1] for rays that might be outside the image bounds
+                        uv.x = std::max(0.0, std::min(1.0, uv.x));
+                        uv.y = std::max(0.0, std::min(1.0, uv.y));
+                    } else {
+                        uv.x = 0.5;
+                        uv.y = 0.5;
+                    }
+                    
+                    // The renderer expects [0,255] here, so scale sampled color
+                    baseColor = sampleTexture(bgTex, uv, ray.origin, &scene, true) * 255.0;
+                }
             }
             
-            // The renderer expects [0,255] here, so scale sampled color
-            return sampleTexture(bgTex, uv, ray.origin, &scene, true) * 255.0;
+            // Fallback to background color
+            if (baseColor.x == 0.0 && baseColor.y == 0.0 && baseColor.z == 0.0) {
+                baseColor = scene.backgroundColor;
+            }
         }
     }
-
-    return scene.backgroundColor;
+    
+    // Composite volumetric contribution over base color
+    // finalColor = volumetricColor + (1 - volumetricOpacity) * baseColor
+    if (intersection.hasVolumetricContribution) {
+        double transmittance = 1.0 - intersection.volumetricOpacity;
+        return intersection.volumetricColor + baseColor * transmittance;
+    }
+    
+    return baseColor;
 }
 
 bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection) {

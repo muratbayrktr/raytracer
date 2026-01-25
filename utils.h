@@ -41,6 +41,8 @@ bool rayHitsPlane(Ray& ray, const Plane& plane, const vector<VectorFloatTriplet>
 bool rayHitsSphere(Ray& ray, const Sphere& sphere, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, int sphereIndex, double minDistance = 0.0);
 bool rayHitsTriangle(Ray& ray, const VectorIntTriplet& face, const vector<VectorFloatTriplet>& vertices, double& t_min, Intersection& intersection, double intersectionTestEpsilon, double determinantT, Material* material, bool enableBackFaceCulling, int containerIndex, int faceIndex, double minDistance = 0.0);
 bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& vertices, const vector<double>& determinants, double& t_min, Intersection& intersection, double intersectionTestEpsilon, scene::MeshBVH* bvh, bool enableBackFaceCulling, int meshIndex, const Matrix4x4* transformMatrix = nullptr, const Matrix4x4* inverseTransformMatrix = nullptr, const Matrix4x4* normalMatrix = nullptr, const Scene* scene = nullptr, Material* materialOverride = nullptr, const scene::AABB* worldSpaceBoundsOverride = nullptr, double minDistance = 0.0);
+bool rayHitsGaussianField(Ray& ray, const GaussianField& field, double& t_min, Intersection& intersection, int fieldIndex, double minDistance = 0.0);
+void rayMarchGaussianVolume(Ray& ray, const GaussianField& field, double t_min, double minDistance, VectorFloatTriplet& accumulatedColor, double& accumulatedOpacity);
 
 /* Pixel Color Functions */
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection);
@@ -60,6 +62,7 @@ Ray refract(Ray& ray, const VectorFloatTriplet normal, double n1, double n2, Vec
 
 /* Shadow */
 bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Intersection& intersection);
+double gaussianFieldTransmittance(const Scene& scene, const Ray& shadowRay, double maxDist);
 
 /* Utility Functions */
 void orthonormalBasis(const VectorFloatTriplet& n, VectorFloatTriplet& u, VectorFloatTriplet& v);
