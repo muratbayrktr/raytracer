@@ -13,16 +13,48 @@
 #include <atomic>
 #include <algorithm>
 #include <sstream>
+#include <thread>
+#include <functional>
 #include "hdr_io.h"
 #include "tonemap.h"
 // #include <SDL3/SDL.h> uncomment this if sdl3 is installed
-#define OUTPUT_PATH "../my_outputs_hw5/"
-#define JSON_OUTPUT_PATH "../my_outputs_hw5/benchmark/"
+#define OUTPUT_PATH "../my_outputs_hw6/"
+#define JSON_OUTPUT_PATH "../my_outputs_hw6/benchmark/"
 using namespace std;
 using namespace scene;
 
 atomic<int> g_pixelsProcessed(0);
 int g_totalPixels = 0;
+
+// Thread-local random state for generating samples on-the-fly
+static thread_local unsigned int tls_seed = 0;
+
+// Generate a random sample when precomputed samples are not available
+inline VectorFloatPenta generateRandomSample(int x, int y, int sampleIdx, int numSamples) {
+    // Use a simple hash-based seeding for reproducibility
+    if (tls_seed == 0) {
+        tls_seed = (unsigned int)(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+    }
+    unsigned int seed = tls_seed ^ (x * 73856093) ^ (y * 19349663) ^ (sampleIdx * 83492791);
+    
+    auto randf = [&seed]() -> double {
+        seed = seed * 1103515245 + 12345;
+        return (double)(seed % 1000000) / 1000000.0;
+    };
+    
+    VectorFloatPenta sample;
+    // For grid-based jittering within the sample
+    int gridSize = (int)sqrt((double)numSamples);
+    if (gridSize * gridSize != numSamples) gridSize = 1;
+    int gridX = sampleIdx % gridSize;
+    int gridY = sampleIdx / gridSize;
+    sample.x = (gridX + randf()) / gridSize;  // subpixel x offset [0,1)
+    sample.y = (gridY + randf()) / gridSize;  // subpixel y offset [0,1)
+    sample.z = randf();  // time for motion blur
+    sample.w = randf();  // extra random 1 (lens, etc.)
+    sample.v = randf();  // extra random 2
+    return sample;
+}
 
 #define USE_GUI 0
 #if USE_GUI
@@ -197,14 +229,28 @@ void* threadFunction(void* arg) {
             int pixelIndex = y * args->width + x;
             int sampleIndex = pixelIndex * camera->numSamples;
             for (int k = 0; k < camera->numSamples; k++) {
-                VectorFloatPenta sample = camera->samples[sampleIndex + k];
+                VectorFloatPenta sample;
+                if (camera->samples) {
+                    sample = camera->samples[sampleIndex + k];
+                } else {
+                    sample = generateRandomSample(x, y, k, camera->numSamples);
+                }
                 double sx = x + sample.x;   // subpixel x
                 double sy = y + sample.y;   // subpixel y
                 // Use precomputed time and extra random dims per sample
                 double sampleTime = sample.z;
                 double r1 = sample.w;
                 double r2 = sample.v;
-                pixelColor = pixelColor + __compute(*scene, *camera, sx, sy, args->width, args->height, sampleTime, r1, r2);
+                VectorFloatTriplet sampleColor = __compute(*scene, *camera, sx, sy, args->width, args->height, sampleTime, r1, r2);
+                
+                // Apply sample clamping if specified (before averaging)
+                if (camera->sampleMaxVal > 0.0) {
+                    sampleColor.x = std::min(sampleColor.x, camera->sampleMaxVal);
+                    sampleColor.y = std::min(sampleColor.y, camera->sampleMaxVal);
+                    sampleColor.z = std::min(sampleColor.z, camera->sampleMaxVal);
+                }
+                
+                pixelColor = pixelColor + sampleColor;
             }
             pixelColor = pixelColor * (1.0 / camera->numSamples);
             args->hdrImage[pixelIndex * 3 + 0] = static_cast<float>(pixelColor.x);
@@ -233,18 +279,31 @@ void* threadFunctionIterative(void* arg) {
         for (int x = 0; x < args->width; ++x) {
             int pixelIndex = y * args->width + x;
             int sampleIndexBase = pixelIndex * camera->numSamples;
-            VectorFloatPenta sample = camera->samples[sampleIndexBase + k];
+            VectorFloatPenta sample;
+            if (camera->samples) {
+                sample = camera->samples[sampleIndexBase + k];
+            } else {
+                sample = generateRandomSample(x, y, k, camera->numSamples);
+            }
             double sx = x + sample.x;
             double sy = y + sample.y;
             double sampleTime = sample.z;
-            double r1 = sample.w;
-            double r2 = sample.v;
-            VectorFloatTriplet color =
-                __compute(*scene, *camera, sx, sy, args->width, args->height, sampleTime, r1, r2);
-            // Accumulate (no race: each pixel belongs to exactly one thread)
-            args->accum[pixelIndex].x += color.x;
-            args->accum[pixelIndex].y += color.y;
-            args->accum[pixelIndex].z += color.z;
+                    double r1 = sample.w;
+                    double r2 = sample.v;
+                    VectorFloatTriplet color =
+                        __compute(*scene, *camera, sx, sy, args->width, args->height, sampleTime, r1, r2);
+                    
+                    // Apply sample clamping if specified (before accumulating)
+                    if (camera->sampleMaxVal > 0.0) {
+                        color.x = std::min(color.x, camera->sampleMaxVal);
+                        color.y = std::min(color.y, camera->sampleMaxVal);
+                        color.z = std::min(color.z, camera->sampleMaxVal);
+                    }
+                    
+                    // Accumulate (no race: each pixel belongs to exactly one thread)
+                    args->accum[pixelIndex].x += color.x;
+                    args->accum[pixelIndex].y += color.y;
+                    args->accum[pixelIndex].z += color.z;
             
             int processed = ++g_pixelsProcessed;
             if (processed % 10000 == 0 || processed == g_totalPixels) {
@@ -430,13 +489,27 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
                 int pixelIndex = y * width + x;
                 int sampleIndex = pixelIndex * camera.numSamples;
                 for (int k = 0; k < camera.numSamples; k++) {
-                    VectorFloatPenta sample = camera.samples[sampleIndex + k];
+                    VectorFloatPenta sample;
+                    if (camera.samples) {
+                        sample = camera.samples[sampleIndex + k];
+                    } else {
+                        sample = generateRandomSample(x, y, k, camera.numSamples);
+                    }
                     double sx = x + sample.x;   // subpixel x
                     double sy = y + sample.y;   // subpixel y
                     double sampleTime = sample.z;
                     double r1 = sample.w;
                     double r2 = sample.v;
-                    pixelColor = pixelColor + __compute(scene, camera, sx, sy, width, height, sampleTime, r1, r2);
+                    VectorFloatTriplet sampleColor = __compute(scene, camera, sx, sy, width, height, sampleTime, r1, r2);
+                    
+                    // Apply sample clamping if specified (before averaging)
+                    if (camera.sampleMaxVal > 0.0) {
+                        sampleColor.x = std::min(sampleColor.x, camera.sampleMaxVal);
+                        sampleColor.y = std::min(sampleColor.y, camera.sampleMaxVal);
+                        sampleColor.z = std::min(sampleColor.z, camera.sampleMaxVal);
+                    }
+                    
+                    pixelColor = pixelColor + sampleColor;
                 }
                 pixelColor = pixelColor * (1.0 / camera.numSamples);
                 hdrImage[pixelIndex * 3 + 0] = static_cast<float>(pixelColor.x);
@@ -461,7 +534,12 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
                 for (int x = 0; x < width; x++) {
                     int pixelIndex = y * width + x;
                     int sampleIndexBase = pixelIndex * camera.numSamples;
-                    VectorFloatPenta sample = camera.samples[sampleIndexBase + k];
+                    VectorFloatPenta sample;
+                    if (camera.samples) {
+                        sample = camera.samples[sampleIndexBase + k];
+                    } else {
+                        sample = generateRandomSample(x, y, k, camera.numSamples);
+                    }
                     double sx = x + sample.x;
                     double sy = y + sample.y;
                     double sampleTime = sample.z;
@@ -469,6 +547,14 @@ double singleThreadedRayTracing(Scene& scene, Camera& camera, int width, int hei
                     double r2 = sample.v;
                     VectorFloatTriplet color =
                         __compute(scene, camera, sx, sy, width, height, sampleTime, r1, r2);
+                    
+                    // Apply sample clamping if specified (before accumulating)
+                    if (camera.sampleMaxVal > 0.0) {
+                        color.x = std::min(color.x, camera.sampleMaxVal);
+                        color.y = std::min(color.y, camera.sampleMaxVal);
+                        color.z = std::min(color.z, camera.sampleMaxVal);
+                    }
+                    
                     accum[pixelIndex].x += color.x;
                     accum[pixelIndex].y += color.y;
                     accum[pixelIndex].z += color.z;
@@ -604,6 +690,11 @@ int main(int argc, char* argv[])
     precomputeTriangleNormals(scene.triangles, triangleNormals, scene.vertices);
     precomputeCameraTriangleDeterminant(scene, cameraTriangleDeterminant);
     precomputeCameraMeshDeterminant(scene, cameraMeshDeterminant);
+    
+    // Precompute light mesh sampling CDFs for Next Event Estimation
+    for (auto& lightMesh : scene.lightMeshes) {
+        precomputeLightMeshSampling(lightMesh, scene.vertices);
+    }
 
     scene.cameraTriangleDeterminant = cameraTriangleDeterminant;
     scene.cameraMeshDeterminant = cameraMeshDeterminant;
@@ -633,8 +724,19 @@ int main(int argc, char* argv[])
 #endif
 
         // numSamples is a perfect square (1, 4, 9, 16, etc.), total samples per pixel
-        VectorFloatPenta* samples = new VectorFloatPenta[numSamples * width * height];
-        precomputeSamples(numSamples, width, height, samples);
+        // For high sample counts (path tracing), skip precomputation to avoid memory explosion
+        // Threshold: ~100 million elements (about 4GB with VectorFloatPenta)
+        const size_t MAX_PRECOMPUTE_SAMPLES = 100000000;
+        size_t totalSamples = (size_t)numSamples * width * height;
+        VectorFloatPenta* samples = nullptr;
+        if (totalSamples <= MAX_PRECOMPUTE_SAMPLES) {
+            samples = new VectorFloatPenta[totalSamples];
+            precomputeSamples(numSamples, width, height, samples);
+            std::cerr << "Precomputed " << totalSamples << " samples" << std::endl;
+        } else {
+            std::cerr << "Skipping sample precomputation (would need " << totalSamples << " samples = " 
+                      << (totalSamples * sizeof(VectorFloatPenta) / (1024*1024*1024)) << " GB)" << std::endl;
+        }
         camera.samples = samples;
         float* hdrImage = new float[width * height * 3];
         if (args.isMultiThreaded) {
@@ -691,7 +793,7 @@ int main(int argc, char* argv[])
         }
         
         delete[] hdrImage;
-        delete[] samples;
+        if (samples) delete[] samples;
 
         json results = {
             {"sceneName", outputName},

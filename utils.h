@@ -45,6 +45,9 @@ bool rayHitsMesh(Ray& ray, const Mesh& mesh, const vector<VectorFloatTriplet>& v
 /* Pixel Color Functions */
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection);
 
+/* Path Tracing Functions */
+VectorFloatTriplet computePathTracing(const Scene& scene, const Camera& camera, Ray& ray, const Intersection& intersection);
+
 /* Shading Functions */
 VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersection& intersection);
 
@@ -63,6 +66,56 @@ bool isInShadow(const Scene& scene, Ray& ray, const PointLight& light, const Int
 
 /* Utility Functions */
 void orthonormalBasis(const VectorFloatTriplet& n, VectorFloatTriplet& u, VectorFloatTriplet& v);
+
+/* Hemisphere Sampling Functions (for Path Tracing) */
+// Sample direction uniformly on upper hemisphere
+// Returns: sampled direction in world space
+// PDF: 1/(2*pi)
+VectorFloatTriplet sampleHemisphereUniform(const VectorFloatTriplet& N, double xi1, double xi2);
+
+// Sample direction with cosine-weighted distribution
+// Returns: sampled direction in world space
+// PDF: cos(theta)/pi
+VectorFloatTriplet sampleHemisphereCosine(const VectorFloatTriplet& N, double xi1, double xi2);
+
+/* Light Sampling Functions (for Next Event Estimation) */
+// Sample a point on a LightSphere
+// Returns: sampled point on sphere, lightNormal (normal at sampled point), pdf (area PDF)
+VectorFloatTriplet sampleLightSphere(const LightSphere& sphere,
+                                      const vector<VectorFloatTriplet>& vertices,
+                                      const VectorFloatTriplet& shadingPoint,
+                                      double xi1, double xi2,
+                                      VectorFloatTriplet& lightNormal,
+                                      double& pdf);
+
+// Sample a point on a LightMesh
+// Returns: sampled point on mesh, lightNormal (normal at sampled point), pdf (area PDF)
+VectorFloatTriplet sampleLightMesh(const LightMesh& mesh,
+                                    const vector<VectorFloatTriplet>& vertices,
+                                    double xi1, double xi2, double xi3,
+                                    VectorFloatTriplet& lightNormal,
+                                    double& pdf);
+
+// Precompute triangle area CDF for LightMesh (called during scene loading)
+void precomputeLightMeshSampling(LightMesh& mesh, const vector<VectorFloatTriplet>& vertices);
+
+/* Next Event Estimation and MIS Functions */
+// Sample a light source directly and compute contribution
+// Returns: radiance contribution, pdfLight (solid angle PDF)
+VectorFloatTriplet sampleDirectLight(const Scene& scene,
+                                      const VectorFloatTriplet& shadingPoint,
+                                      const VectorFloatTriplet& shadingNormal,
+                                      double xi1, double xi2, double xi3, double xi4,
+                                      VectorFloatTriplet& lightDir,
+                                      double& pdfLight);
+
+// Convert area PDF to solid angle PDF
+// p(w) = p(x) * r^2 / |cos(theta_light)|
+double areaPDFToSolidAnglePDF(double areaPDF, double distance, double cosAtLight);
+
+// Multiple Importance Sampling weight
+// Returns weight for sample based on heuristic (balance, power, 01)
+double misWeight(double pdf1, double pdf2, const std::string& heuristic);
 
 void printPerfStats();
 void printPerfStatsInline();

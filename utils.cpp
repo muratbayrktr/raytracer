@@ -5,12 +5,14 @@
 #include <chrono>
 #include <sstream>
 #include <map>
+#include <fstream>
 #include "scene.h"
 #include "utils.h"
 #include "overloads.h"
 #include "bvh.h"
 #include "precompute.h"
 #include "texture.h"
+#include "brdf.h"
 
 using namespace std;
 using namespace scene;
@@ -175,7 +177,16 @@ Ray castRay(const Camera& camera,
             double time,
             double random1,
             double random2) {
-    VectorFloatTriplet w = -normalize(camera.gaze);
+    // Safety check: ensure gaze is not zero
+    VectorFloatTriplet gaze = camera.gaze;
+    double gazeLen = std::sqrt(dotProduct(gaze, gaze));
+    if (gazeLen < 1e-10) {
+        gaze = VectorFloatTriplet{0, 0, -1};  // Default gaze
+    } else {
+        gaze = gaze * (1.0 / gazeLen);
+    }
+    
+    VectorFloatTriplet w = -gaze;
     VectorFloatTriplet v = normalize(camera.up);
     VectorFloatTriplet u = crossProduct(v, w);
     double l = camera.nearPlane.x;
@@ -882,33 +893,12 @@ Intersection intersect(const Scene& scene, Ray& ray) {
     Intersection intersection;
     bool hit = false;
     
+    // NOTE: Near-plane clipping disabled. The nearDistance field defines the image plane
+    // for ray generation, not a clipping plane. Objects closer than nearDistance should
+    // still be visible (they're just between the camera and the image plane).
+    // If you need near-plane clipping, enable this code and ensure scenes are designed accordingly.
     double minDistance = 0.0;
     bool isPrimaryRay = (ray.depth == 0 && !ray.shadowRay && !ray.reflectionRay && !ray.refractionRay);
-    if (isPrimaryRay && !scene.cameras.empty()) {
-        const Camera& cam = scene.cameras[scene.currentCameraIndex];
-        
-        VectorFloatTriplet n = normalize(cam.gaze);
-        VectorFloatTriplet e = cam.position;
-        
-        VectorFloatTriplet o = ray.origin;
-        VectorFloatTriplet d = normalize(ray.direction);
-        
-        // Solve for t where the ray hits the image plane:
-        // dot((o + t*d) - e, n) = cam.nearDistance
-        // => t = (nearDistance - dot(o - e, n)) / dot(d, n)
-        double denom = dotProduct(d, n);
-        if (std::fabs(denom) > 1e-9) {
-            double numer = cam.nearDistance - dotProduct(o - e, n);
-            double t_plane = numer / denom;
-            if (t_plane > 0.0) {
-                minDistance = t_plane;
-            } else {
-                minDistance = 0.0;
-            }
-        } else {
-            minDistance = 0.0;
-        }
-    }
     
 #if PROFILE_PERF
     auto t_planes_start = std::chrono::high_resolution_clock::now();
@@ -1146,6 +1136,79 @@ Intersection intersect(const Scene& scene, Ray& ray) {
     g_timeIntersectPostProcess += std::chrono::duration_cast<std::chrono::nanoseconds>(t_postprocess_end - t_postprocess_start).count();
 #endif
     
+    // Test LightSpheres (emissive spheres)
+    for(int i = 0; i < (int)scene.lightSpheres.size(); i++) {
+        const LightSphere& lightSphere = scene.lightSpheres[i];
+        // Create a temporary Sphere for intersection testing
+        Sphere tempSphere;
+        tempSphere.center = lightSphere.center;
+        tempSphere.radius = lightSphere.radius;
+        tempSphere.hasMotionBlur = lightSphere.hasMotionBlur;
+        tempSphere.motionBlur = lightSphere.motionBlur;
+        tempSphere.hasTransformation = lightSphere.hasTransformation;
+        tempSphere.transformMatrix = lightSphere.transformMatrix;
+        tempSphere.inverseTransformMatrix = lightSphere.inverseTransformMatrix;
+        tempSphere.normalMatrix = lightSphere.normalMatrix;
+        tempSphere.material = lightSphere.material;
+        
+        Ray testRay = lightSphere.hasMotionBlur ? applyMotionBlurToRay(ray, lightSphere.motionBlur) : ray;
+        Intersection tempIntersection;
+        double temp_t_min = t_min;
+        bool thisHit = rayHitsSphere(testRay, tempSphere, scene.vertices, temp_t_min, tempIntersection, -10000 - i, minDistance);  // Use negative index to identify as light
+        if (thisHit && temp_t_min < t_min) {
+            intersection = tempIntersection;
+            intersection.kind = Intersection::Kind::LightSphere;
+            intersection.containerIndex = i;  // Store lightSphere index
+            t_min = temp_t_min;
+            hit = true;
+        }
+        if (thisHit && lightSphere.hasMotionBlur) {
+            finalizeMotionBlurHit(ray, lightSphere.motionBlur, ray.time, intersection, t_min);
+        }
+    }
+    
+    // Test LightMeshes (emissive meshes)
+    for(int i = 0; i < (int)scene.lightMeshes.size(); i++) {
+        const LightMesh& lightMesh = scene.lightMeshes[i];
+        // Create a temporary Mesh for intersection testing
+        Mesh tempMesh;
+        tempMesh.faces = lightMesh.faces;
+        tempMesh.shadingMode = lightMesh.shadingMode;
+        tempMesh.hasMotionBlur = lightMesh.hasMotionBlur;
+        tempMesh.motionBlur = lightMesh.motionBlur;
+        tempMesh.hasTransformation = lightMesh.hasTransformation;
+        tempMesh.transformMatrix = lightMesh.transformMatrix;
+        tempMesh.inverseTransformMatrix = lightMesh.inverseTransformMatrix;
+        tempMesh.normalMatrix = lightMesh.normalMatrix;
+        tempMesh.material = lightMesh.material;
+        
+        Ray testRay = lightMesh.hasMotionBlur ? applyMotionBlurToRay(ray, lightMesh.motionBlur) : ray;
+        // Use a simple BVH or direct testing - for now, test without BVH
+        MeshBVH* bvh = nullptr;  // LightMeshes don't have BVH yet
+        Intersection tempIntersection;
+        double temp_t_min = t_min;
+        // Get determinant for light mesh (use 0.0 as fallback)
+        // cameraMeshDeterminant is [camera][mesh][determinant], but for light meshes we don't have precomputed determinants
+        // So we'll use 0.0 and let rayHitsMesh compute it
+        std::vector<double> emptyDeterminants;  // Empty vector - rayHitsMesh will compute
+        
+        bool thisHit = rayHitsMesh(testRay, tempMesh, scene.vertices, 
+                                    emptyDeterminants,
+                                    temp_t_min, tempIntersection, scene.intersectionTestEpsilon, bvh, 
+                                    false, -20000 - i,  // Disable back-face culling for emissive objects
+                                    nullptr, nullptr, nullptr, &scene, nullptr, nullptr, minDistance);
+        if (thisHit && temp_t_min < t_min) {
+            intersection = tempIntersection;
+            intersection.kind = Intersection::Kind::LightMesh;
+            intersection.containerIndex = i;  // Store lightMesh index
+            t_min = temp_t_min;
+            hit = true;
+        }
+        if (thisHit && lightMesh.hasMotionBlur) {
+            finalizeMotionBlurHit(ray, lightMesh.motionBlur, ray.time, intersection, t_min);
+        }
+    }
+    
 #if PROFILE_PERF
     auto t_end = std::chrono::high_resolution_clock::now();
     g_timeIntersect += std::chrono::duration_cast<std::chrono::nanoseconds>(t_end - t_start).count();
@@ -1165,6 +1228,319 @@ void orthonormalBasis(const VectorFloatTriplet& n, VectorFloatTriplet& u, Vector
     v = crossProduct(n, u);
     u = normalize(u);
     v = normalize(v);
+}
+
+VectorFloatTriplet sampleHemisphereUniform(const VectorFloatTriplet& N, double xi1, double xi2) {
+    // Uniform hemisphere sampling
+    // phi = 2*pi*xi1, theta = arccos(xi2)
+    // PDF = 1/(2*pi)
+    double phi = 2.0 * M_PI * xi1;
+    double cosTheta = xi2;  // Uniform in [0,1]
+    double sinTheta = std::sqrt(1.0 - cosTheta * cosTheta);
+    
+    // Sample in local coordinate system (upper hemisphere)
+    double x = sinTheta * std::cos(phi);
+    double y = cosTheta;  // y is up
+    double z = sinTheta * std::sin(phi);
+    
+    // Transform to world space using surface normal
+    VectorFloatTriplet u, v;
+    orthonormalBasis(N, u, v);
+    VectorFloatTriplet direction = u * x + N * y + v * z;
+    return normalize(direction);
+}
+
+VectorFloatTriplet sampleHemisphereCosine(const VectorFloatTriplet& N, double xi1, double xi2) {
+    // Cosine-weighted hemisphere sampling
+    // phi = 2*pi*xi1, theta = arcsin(sqrt(xi2))
+    // PDF = cos(theta)/pi
+    double phi = 2.0 * M_PI * xi1;
+    double cosTheta = std::sqrt(xi2);  // Cosine-weighted
+    double sinTheta = std::sqrt(1.0 - cosTheta * cosTheta);
+    
+    // Sample in local coordinate system (upper hemisphere)
+    double x = sinTheta * std::cos(phi);
+    double y = cosTheta;  // y is up (cosine-weighted)
+    double z = sinTheta * std::sin(phi);
+    
+    // Transform to world space using surface normal
+    VectorFloatTriplet u, v;
+    orthonormalBasis(N, u, v);
+    VectorFloatTriplet direction = u * x + N * y + v * z;
+    return normalize(direction);
+}
+
+void precomputeLightMeshSampling(LightMesh& mesh, const vector<VectorFloatTriplet>& vertices) {
+    // Compute triangle areas and build CDF for importance sampling
+    mesh.totalArea = 0.0;
+    mesh.cdfTriangleAreas.clear();
+    
+    for (const auto& face : mesh.faces) {
+        const VectorFloatTriplet& v0 = vertices[face.x];
+        const VectorFloatTriplet& v1 = vertices[face.y];
+        const VectorFloatTriplet& v2 = vertices[face.z];
+        
+        VectorFloatTriplet e1 = v1 - v0;
+        VectorFloatTriplet e2 = v2 - v0;
+        VectorFloatTriplet cross = crossProduct(e1, e2);
+        double area = 0.5 * std::sqrt(dotProduct(cross, cross));
+        
+        mesh.totalArea += area;
+        mesh.cdfTriangleAreas.push_back(mesh.totalArea);
+    }
+    
+    // Normalize CDF to [0,1]
+    if (mesh.totalArea > 1e-10) {
+        for (auto& cdf : mesh.cdfTriangleAreas) {
+            cdf /= mesh.totalArea;
+        }
+    }
+}
+
+VectorFloatTriplet sampleLightMesh(const LightMesh& mesh,
+                                    const vector<VectorFloatTriplet>& vertices,
+                                    double xi1, double xi2, double xi3,
+                                    VectorFloatTriplet& lightNormal,
+                                    double& pdf) {
+    // Step 1: Select triangle based on area (using CDF)
+    int triangleIndex = 0;
+    if (!mesh.cdfTriangleAreas.empty()) {
+        for (size_t i = 0; i < mesh.cdfTriangleAreas.size(); i++) {
+            if (xi1 <= mesh.cdfTriangleAreas[i]) {
+                triangleIndex = i;
+                break;
+            }
+        }
+    }
+    
+    if (triangleIndex >= (int)mesh.faces.size()) {
+        triangleIndex = mesh.faces.size() - 1;
+    }
+    
+    const VectorIntTriplet& face = mesh.faces[triangleIndex];
+    const VectorFloatTriplet& v0 = vertices[face.x];
+    const VectorFloatTriplet& v1 = vertices[face.y];
+    const VectorFloatTriplet& v2 = vertices[face.z];
+    
+    // Step 2: Sample point uniformly on triangle using barycentric coordinates
+    double sqrt_xi2 = std::sqrt(xi2);
+    double u = 1.0 - sqrt_xi2;
+    double v = xi3 * sqrt_xi2;
+    double w = 1.0 - u - v;
+    
+    VectorFloatTriplet samplePoint = v0 * u + v1 * v + v2 * w;
+    
+    // Compute triangle normal
+    VectorFloatTriplet e1 = v1 - v0;
+    VectorFloatTriplet e2 = v2 - v0;
+    VectorFloatTriplet normal = crossProduct(e1, e2);
+    double normalLen = std::sqrt(dotProduct(normal, normal));
+    if (normalLen > 1e-10) {
+        lightNormal = normal * (1.0 / normalLen);
+    } else {
+        lightNormal = VectorFloatTriplet{0, 1, 0};  // Fallback
+    }
+    
+    // Compute area PDF: probability of selecting this triangle * probability of point on triangle
+    double triangleArea = 0.5 * normalLen;
+    if (mesh.totalArea > 1e-10 && triangleArea > 1e-10) {
+        double triangleProb = triangleArea / mesh.totalArea;
+        double pointProb = 1.0 / triangleArea;  // Uniform on triangle
+        pdf = triangleProb * pointProb;  // = 1 / totalArea
+    } else {
+        pdf = 0.0;
+    }
+    
+    return samplePoint;
+}
+
+VectorFloatTriplet sampleLightSphere(const LightSphere& sphere,
+                                      const vector<VectorFloatTriplet>& vertices,
+                                      const VectorFloatTriplet& shadingPoint,
+                                      double xi1, double xi2,
+                                      VectorFloatTriplet& lightNormal,
+                                      double& pdf) {
+    // Get sphere center and radius
+    VectorFloatTriplet center = vertices[sphere.center];
+    double radius = sphere.radius;
+    
+    // Sample uniformly on sphere surface using spherical coordinates
+    // Uniform sampling: phi = 2*pi*xi1, theta = arccos(1 - 2*xi2)
+    double phi = 2.0 * M_PI * xi1;
+    double cosTheta = 1.0 - 2.0 * xi2;  // Uniform in [-1, 1]
+    double sinTheta = std::sqrt(1.0 - cosTheta * cosTheta);
+    
+    // Point on unit sphere in local coordinates
+    VectorFloatTriplet localPoint;
+    localPoint.x = sinTheta * std::cos(phi);
+    localPoint.y = cosTheta;
+    localPoint.z = sinTheta * std::sin(phi);
+    
+    // Transform to world space: scale by radius and translate by center
+    VectorFloatTriplet samplePoint = center + localPoint * radius;
+    
+    // Normal points from center to surface point
+    lightNormal = normalize(localPoint);
+    
+    // Area PDF: 1 / (4 * pi * r^2) for uniform sphere sampling
+    double sphereArea = 4.0 * M_PI * radius * radius;
+    if (sphereArea > 1e-10) {
+        pdf = 1.0 / sphereArea;
+    } else {
+        pdf = 0.0;
+    }
+    
+    return samplePoint;
+}
+
+double areaPDFToSolidAnglePDF(double areaPDF, double distance, double cosAtLight) {
+    // Convert area PDF to solid angle PDF
+    // p(w) = p(x) * r^2 / |cos(theta_light)|
+    if (cosAtLight < 1e-10 || distance < 1e-10) {
+        return 0.0;
+    }
+    double distanceSq = distance * distance;
+    return areaPDF * distanceSq / std::abs(cosAtLight);
+}
+
+double misWeight(double pdf1, double pdf2, const std::string& heuristic) {
+    if (pdf1 <= 0.0 && pdf2 <= 0.0) {
+        return 0.0;
+    }
+    if (pdf1 <= 0.0) {
+        return 0.0;
+    }
+    if (pdf2 <= 0.0) {
+        return 1.0;
+    }
+    
+    if (heuristic == "balance") {
+        return pdf1 / (pdf1 + pdf2);
+    } else if (heuristic == "power") {
+        double pdf1Sq = pdf1 * pdf1;
+        double pdf2Sq = pdf2 * pdf2;
+        return pdf1Sq / (pdf1Sq + pdf2Sq);
+    } else if (heuristic == "01") {
+        return (pdf1 > pdf2) ? 1.0 : 0.0;
+    }
+    // Default: balance heuristic
+    return pdf1 / (pdf1 + pdf2);
+}
+
+VectorFloatTriplet sampleDirectLight(const Scene& scene,
+                                      const VectorFloatTriplet& shadingPoint,
+                                      const VectorFloatTriplet& shadingNormal,
+                                      double xi1, double xi2, double xi3, double xi4,
+                                      VectorFloatTriplet& lightDir,
+                                      double& pdfLight) {
+    // Count total number of light sources (point lights, area lights, object lights)
+    int numPointLights = scene.pointLights.size();
+    int numAreaLights = scene.areaLights.size();
+    int numLightSpheres = scene.lightSpheres.size();
+    int numLightMeshes = scene.lightMeshes.size();
+    int totalLights = numPointLights + numAreaLights + numLightSpheres + numLightMeshes;
+    
+    if (totalLights == 0) {
+        pdfLight = 0.0;
+        return VectorFloatTriplet{0.0, 0.0, 0.0};
+    }
+    
+    // Select a light uniformly
+    double lightSelect = xi1 * totalLights;
+    int lightIndex = (int)std::floor(lightSelect);
+    if (lightIndex >= totalLights) {
+        lightIndex = totalLights - 1;
+    }
+    
+    VectorFloatTriplet lightPoint;
+    VectorFloatTriplet lightNormal;
+    VectorFloatTriplet radiance;
+    double areaPDF = 0.0;
+    
+    // Sample from selected light
+    if (lightIndex < numPointLights) {
+        // Point light - sample the point light position
+        const PointLight& light = scene.pointLights[lightIndex];
+        lightPoint = light.position;
+        lightNormal = VectorFloatTriplet{0, 0, 0};  // Point lights don't have normals
+        radiance = light.intensity;  // Point lights use intensity, not radiance
+        areaPDF = 1.0;  // Dirac delta - will be handled specially
+        // For point lights, PDF conversion is different
+    } else if (lightIndex < numPointLights + numAreaLights) {
+        // Area light
+        const AreaLight& light = scene.areaLights[lightIndex - numPointLights];
+        VectorFloatTriplet u, v;
+        orthonormalBasis(normalize(light.normal), u, v);
+        double halfSize = light.size / 2.0;
+        double offsetU = (xi2 * 2.0 - 1.0) * halfSize;
+        double offsetV = (xi3 * 2.0 - 1.0) * halfSize;
+        lightPoint = light.position + u * offsetU + v * offsetV;
+        lightNormal = normalize(light.normal);
+        radiance = light.radiance;
+        double area = light.size * light.size;
+        areaPDF = 1.0 / area;
+    } else if (lightIndex < numPointLights + numAreaLights + numLightSpheres) {
+        // LightSphere
+        const LightSphere& light = scene.lightSpheres[lightIndex - numPointLights - numAreaLights];
+        lightPoint = sampleLightSphere(light, scene.vertices, shadingPoint, xi2, xi3, lightNormal, areaPDF);
+        radiance = light.radiance;
+    } else {
+        // LightMesh
+        const LightMesh& light = scene.lightMeshes[lightIndex - numPointLights - numAreaLights - numLightSpheres];
+        lightPoint = sampleLightMesh(light, scene.vertices, xi2, xi3, xi4, lightNormal, areaPDF);
+        radiance = light.radiance;
+    }
+    
+    // Compute direction from shading point to light point
+    VectorFloatTriplet toLight = lightPoint - shadingPoint;
+    double distanceSq = dotProduct(toLight, toLight);
+    double distance = std::sqrt(distanceSq);
+    
+    if (distance < 1e-10) {
+        pdfLight = 0.0;
+        return VectorFloatTriplet{0.0, 0.0, 0.0};
+    }
+    
+    lightDir = toLight * (1.0 / distance);
+    
+    // Check visibility
+    VectorFloatTriplet offsetNormal = shadingNormal;
+    if (dotProduct(offsetNormal, lightDir) < 0.0) {
+        offsetNormal = -offsetNormal;
+    }
+    Ray shadowRay(shadingPoint + scene.shadowRayEpsilon * offsetNormal, lightDir, 0, true, false, false, 0.0);
+    Intersection shadowHit = intersect(scene, shadowRay);
+    if (shadowHit.hit && shadowHit.distance < distance - scene.shadowRayEpsilon) {
+        // Occluded
+        pdfLight = 0.0;
+        return VectorFloatTriplet{0.0, 0.0, 0.0};
+    }
+    
+    // Compute cosine term at shading point
+    double cosTheta = std::max(0.0, dotProduct(shadingNormal, lightDir));
+    if (cosTheta <= 0.0) {
+        pdfLight = 0.0;
+        return VectorFloatTriplet{0.0, 0.0, 0.0};
+    }
+    
+    if (numPointLights > 0 && lightIndex < numPointLights) {
+        // Point light: treat as delta distribution with uniform light selection
+        pdfLight = 1.0 / totalLights;
+        // Apply distance falloff here; cosine handled by caller
+        return radiance * (1.0 / distanceSq);
+    }
+    
+    // Convert area PDF to solid angle PDF for area/object lights
+    double cosAtLight = std::abs(dotProduct(lightNormal, -lightDir));
+    if (areaPDF > 0.0 && cosAtLight > 1e-10) {
+        pdfLight = areaPDFToSolidAnglePDF(areaPDF, distance, cosAtLight) / totalLights;
+    } else {
+        pdfLight = 0.0;
+        return VectorFloatTriplet{0.0, 0.0, 0.0};
+    }
+    
+    // Return radiance (cosine handled by caller)
+    return radiance;
 }
 
 VectorFloatTriplet perturbDirection(const VectorFloatTriplet& idealDir,
@@ -1683,6 +2059,121 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
         color += diffuse + specular;
     }
 
+    // *** FIX: Handle LightMeshes (emissive mesh geometry) for default shading ***
+    for (int i = 0; i < (int)scene.lightMeshes.size(); i++) {
+        const LightMesh& lightMesh = scene.lightMeshes[i];
+        
+        // Sample a point on the light mesh
+        VectorFloatTriplet lightNormal;
+        double pdf;
+        VectorFloatTriplet samplePoint = sampleLightMesh(lightMesh, scene.vertices, 
+                                                          ray.random1, ray.random2, 0.5, 
+                                                          lightNormal, pdf);
+        
+        VectorFloatTriplet toLight = samplePoint - intersection.point;
+        double distanceSq = dotProduct(toLight, toLight);
+        double distance = std::sqrt(distanceSq);
+        if (distance < 1e-10) continue;
+        
+        VectorFloatTriplet lightDir = toLight * (1.0 / distance);
+        
+        double cosTheta = dotProduct(normal, lightDir);
+        if (cosTheta <= 0.0) continue;
+        
+        double cosThetaLight = std::abs(dotProduct(lightNormal, -lightDir));
+        if (cosThetaLight < 1e-10) continue;
+        
+        // Shadow test
+        VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+        if (dotProduct(offsetNormal, lightDir) < 0.0) {
+            offsetNormal = -offsetNormal;
+        }
+        Ray shadowRay{
+            intersection.point + scene.shadowRayEpsilon * offsetNormal,
+            lightDir,
+            0,
+            true,
+            false,
+            false,
+            ray.time,
+            ray.random1,
+            ray.random2
+        };
+        Intersection shadowHit = intersect(scene, shadowRay);
+        if (shadowHit.hit && shadowHit.distance < distance - scene.shadowRayEpsilon) continue;
+        
+        // Compute irradiance: L * cos_theta_surface * cos_theta_light * area / r^2
+        double totalArea = lightMesh.totalArea > 0.0 ? lightMesh.totalArea : 1.0;
+        VectorFloatTriplet irradiance = lightMesh.radiance * (cosTheta * cosThetaLight * totalArea / distanceSq);
+        
+        VectorFloatTriplet diffuse = diffuseReflectance * irradiance;
+        
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+        double specFactor = std::pow(std::max(0.0, dotProduct(normal, halfVector)), material->phongExponent);
+        VectorFloatTriplet specular = specularReflectance * irradiance * specFactor;
+        
+        color += diffuse + specular;
+    }
+
+    // *** FIX: Handle LightSpheres (emissive sphere geometry) for default shading ***
+    for (int i = 0; i < (int)scene.lightSpheres.size(); i++) {
+        const LightSphere& lightSphere = scene.lightSpheres[i];
+        
+        // Sample a point on the light sphere
+        VectorFloatTriplet lightNormal;
+        double pdf;
+        VectorFloatTriplet samplePoint = sampleLightSphere(lightSphere, scene.vertices, 
+                                                            intersection.point,
+                                                            ray.random1, ray.random2, 
+                                                            lightNormal, pdf);
+        
+        VectorFloatTriplet toLight = samplePoint - intersection.point;
+        double distanceSq = dotProduct(toLight, toLight);
+        double distance = std::sqrt(distanceSq);
+        if (distance < 1e-10) continue;
+        
+        VectorFloatTriplet lightDir = toLight * (1.0 / distance);
+        
+        double cosTheta = dotProduct(normal, lightDir);
+        if (cosTheta <= 0.0) continue;
+        
+        double cosThetaLight = std::abs(dotProduct(lightNormal, -lightDir));
+        if (cosThetaLight < 1e-10) continue;
+        
+        // Shadow test
+        VectorFloatTriplet offsetNormal = intersection.geometricNormal;
+        if (dotProduct(offsetNormal, lightDir) < 0.0) {
+            offsetNormal = -offsetNormal;
+        }
+        Ray shadowRay{
+            intersection.point + scene.shadowRayEpsilon * offsetNormal,
+            lightDir,
+            0,
+            true,
+            false,
+            false,
+            ray.time,
+            ray.random1,
+            ray.random2
+        };
+        Intersection shadowHit = intersect(scene, shadowRay);
+        if (shadowHit.hit && shadowHit.distance < distance - scene.shadowRayEpsilon) continue;
+        
+        // Compute irradiance
+        double sphereArea = 4.0 * M_PI * lightSphere.radius * lightSphere.radius;
+        VectorFloatTriplet irradiance = lightSphere.radiance * (cosTheta * cosThetaLight * sphereArea / distanceSq);
+        
+        VectorFloatTriplet diffuse = diffuseReflectance * irradiance;
+        
+        VectorFloatTriplet viewDir = normalize(-ray.direction);
+        VectorFloatTriplet halfVector = normalize(lightDir + viewDir);
+        double specFactor = std::pow(std::max(0.0, dotProduct(normal, halfVector)), material->phongExponent);
+        VectorFloatTriplet specular = specularReflectance * irradiance * specFactor;
+        
+        color += diffuse + specular;
+    }
+
     // Directional lights
     for (const DirectionalLight& light : scene.directionalLights) {
         VectorFloatTriplet lightDir = normalize(light.direction);
@@ -1952,12 +2443,341 @@ VectorFloatTriplet computeShading(const Scene& scene, Ray& ray, const Intersecti
     return color;
 }
 
+// Helper function to check if an intersection is an emissive object (LightSphere or LightMesh)
+static bool isEmissiveObject(const Scene& scene, const Intersection& intersection) {
+    return (intersection.kind == Intersection::Kind::LightSphere || 
+            intersection.kind == Intersection::Kind::LightMesh);
+}
+
+// Helper function to get emission radiance from an emissive object
+static VectorFloatTriplet getEmission(const Scene& scene, const Intersection& intersection) {
+    if (intersection.kind == Intersection::Kind::LightSphere && 
+        intersection.containerIndex >= 0 && 
+        intersection.containerIndex < (int)scene.lightSpheres.size()) {
+        return scene.lightSpheres[intersection.containerIndex].radiance;
+    } else if (intersection.kind == Intersection::Kind::LightMesh && 
+               intersection.containerIndex >= 0 && 
+               intersection.containerIndex < (int)scene.lightMeshes.size()) {
+        return scene.lightMeshes[intersection.containerIndex].radiance;
+    }
+    return VectorFloatTriplet{0.0, 0.0, 0.0};
+}
+
+VectorFloatTriplet computePathTracing(const Scene& scene, const Camera& camera, Ray& ray, const Intersection& intersection) {
+    VectorFloatTriplet L = {0.0, 0.0, 0.0};
+    VectorFloatTriplet throughput = {1.0, 1.0, 1.0};
+    
+    Ray currentRay = ray;
+    Intersection currentHit = intersection;
+    
+    // Use camera's maxRecursionDepth if set, otherwise use scene's
+    int maxDepth = (camera.maxRecursionDepth > 0) ? camera.maxRecursionDepth : scene.maxRecursionDepth;
+    
+    // Splitting factor: for primary rays, send multiple indirect rays
+    int splittingFactor = (ray.depth == 0) ? camera.splittingFactor : 1;
+    
+    for (int depth = 0; depth < maxDepth; depth++) {
+        // If we have a hit from previous iteration, use it; otherwise intersect
+        if (depth > 0 || !currentHit.hit) {
+            currentHit = intersect(scene, currentRay);
+        }
+        
+        if (!currentHit.hit) {
+            // Ray hit background - add background color weighted by throughput
+            L = L + throughput * scene.backgroundColor;
+            break;
+        }
+        
+        // Check if we hit an emissive object (light source)
+        if (isEmissiveObject(scene, currentHit)) {
+            VectorFloatTriplet emission = getEmission(scene, currentHit);
+            L = L + throughput * emission;
+            // For pure path tracing, we can terminate here or continue
+            // Typically we continue to allow indirect lighting
+        }
+        
+        // Get material and BRDF
+        Material* material = currentHit.material;
+        if (!material) {
+            break;  // No material, terminate path
+        }
+        
+        const BRDF* brdf = nullptr;
+        if (material->brdfId > 0) {
+            brdf = scene.getBRDFById(material->brdfId);
+        }
+        
+        // Sample next direction based on importance sampling setting
+        VectorFloatTriplet N = normalize(currentHit.shadingNormal);
+        VectorFloatTriplet wo = normalize(-currentRay.direction);  // Outgoing direction (to camera)
+        // Ensure normal faces outgoing direction to keep BRDF terms valid
+        if (dotProduct(N, wo) < 0.0) {
+            N = -N;
+        }
+        
+        // Generate random numbers for this bounce
+        // Use a simple hash-based approach to generate new random numbers from depth and original random values
+        double xi1, xi2;
+        if (depth == 0) {
+            // First bounce: use precomputed random values
+            xi1 = currentRay.random1;
+            xi2 = currentRay.random2;
+        } else {
+            // Subsequent bounces: generate new random numbers using a simple hash
+            // This is a simple LCG-like approach
+            double seed1 = currentRay.random1 * 1000.0 + depth * 17.0;
+            double seed2 = currentRay.random2 * 1000.0 + depth * 23.0;
+            xi1 = std::fmod(seed1 * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+            xi2 = std::fmod(seed2 * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+            // Ensure in [0,1)
+            xi1 = std::max(0.0, std::min(0.999999, xi1));
+            xi2 = std::max(0.0, std::min(0.999999, xi2));
+        }
+        
+        // Next Event Estimation: sample light directly (only once, not per split)
+        VectorFloatTriplet directContribution = {0.0, 0.0, 0.0};
+        if (camera.nextEventEstimation) {
+            double pdfLight = 0.0;
+            VectorFloatTriplet lightDir;
+            // Generate additional random numbers for light sampling
+            double xi3, xi4;
+            if (depth == 0) {
+                // Reuse random values - but we need 4 random numbers, so generate more
+                xi3 = std::fmod((currentRay.random1 + 0.5) * 1000.0, 1.0);
+                xi4 = std::fmod((currentRay.random2 + 0.5) * 1000.0, 1.0);
+            } else {
+                double seed3 = currentRay.random1 * 1000.0 + depth * 31.0;
+                double seed4 = currentRay.random2 * 1000.0 + depth * 37.0;
+                xi3 = std::fmod(seed3 * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+                xi4 = std::fmod(seed4 * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+                xi3 = std::max(0.0, std::min(0.999999, xi3));
+                xi4 = std::max(0.0, std::min(0.999999, xi4));
+            }
+            
+            VectorFloatTriplet lightRadiance = sampleDirectLight(scene, currentHit.point, N, 
+                                                                   xi1, xi2, xi3, xi4, lightDir, pdfLight);
+            
+            if (pdfLight > 1e-10) {
+                // Evaluate BRDF for light direction
+                VectorFloatTriplet diffuseLight, specularLight;
+                VectorFloatTriplet brdfLight = brdf::evaluateBRDF(*material, brdf, N, lightDir, wo, diffuseLight, specularLight);
+                double cosThetaLight = std::max(0.0, dotProduct(N, lightDir));
+                
+                // Compute BRDF PDF for this light direction
+                double pdfBRDFLight = brdf::pdfBRDF(brdf, N, lightDir, wo);
+                
+                // MIS weight for light sample
+                double wLight = 1.0;
+                if (!camera.misHeuristic.empty()) {
+                    wLight = misWeight(pdfLight, pdfBRDFLight, camera.misHeuristic);
+                }
+                
+                // Direct light contribution: w_light * (L * BRDF * cos) / pdf_light
+                if (cosThetaLight > 1e-10) {
+                    VectorFloatTriplet brdfCosLight = brdfLight * cosThetaLight;
+                    double invPdfLight = 1.0 / pdfLight;
+                    directContribution = lightRadiance * brdfCosLight * invPdfLight * wLight;
+                }
+            }
+        }
+        
+        // Splitting: for first bounce from primary ray, accumulate multiple indirect contributions
+        VectorFloatTriplet indirectAccum = {0.0, 0.0, 0.0};
+        int numSplits = (depth == 0 && ray.depth == 0) ? splittingFactor : 1;
+        VectorFloatTriplet offsetPoint = currentHit.point + scene.shadowRayEpsilon * N;
+        
+        for (int splitIdx = 0; splitIdx < numSplits; splitIdx++) {
+            // Generate random numbers for this split (vary for splitting)
+            double xi1_split = xi1, xi2_split = xi2;
+            if (splitIdx > 0) {
+                // For additional splits, generate different random numbers
+                double seed1 = currentRay.random1 * 1000.0 + splitIdx * 17.0;
+                double seed2 = currentRay.random2 * 1000.0 + splitIdx * 23.0;
+                xi1_split = std::fmod(seed1 * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+                xi2_split = std::fmod(seed2 * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+                xi1_split = std::max(0.0, std::min(0.999999, xi1_split));
+                xi2_split = std::max(0.0, std::min(0.999999, xi2_split));
+            }
+        
+            // Sample BRDF direction (indirect illumination) for this split
+            VectorFloatTriplet wi_split;  // Incoming direction (from light)
+            double pdfBRDF_split;
+            
+            if (camera.importanceSampling) {
+                // Cosine-weighted hemisphere sampling
+                wi_split = sampleHemisphereCosine(N, xi1_split, xi2_split);
+                double cosTheta_split = std::max(0.0, dotProduct(N, wi_split));
+                pdfBRDF_split = cosTheta_split / M_PI;
+            } else {
+                // Uniform hemisphere sampling
+                wi_split = sampleHemisphereUniform(N, xi1_split, xi2_split);
+                pdfBRDF_split = 1.0 / (2.0 * M_PI);
+            }
+            
+            // Evaluate BRDF for sampled direction
+            VectorFloatTriplet diffuse_split, specular_split;
+            VectorFloatTriplet brdfValue_split = brdf::evaluateBRDF(*material, brdf, N, wi_split, wo, diffuse_split, specular_split);
+            
+            // Compute cosine term
+            double cosTheta_split = std::max(0.0, dotProduct(N, wi_split));
+            
+            // Check if BRDF-sampled direction hits a light
+            VectorFloatTriplet indirectContribution_split = {0.0, 0.0, 0.0};
+            Ray testRay(offsetPoint, wi_split, currentRay.depth + 1, false, false, false, currentRay.time, 0.0, 0.0);
+            Intersection testHit = intersect(scene, testRay);
+            
+            if (testHit.hit && isEmissiveObject(scene, testHit)) {
+                // BRDF direction hit a light - compute contribution with MIS
+                VectorFloatTriplet emission = getEmission(scene, testHit);
+                
+                // Compute light PDF for this direction
+                double pdfLightBRDF = 0.0;
+                if (testHit.kind == Intersection::Kind::LightSphere) {
+                    const LightSphere& light = scene.lightSpheres[testHit.containerIndex];
+                    VectorFloatTriplet toLight = testHit.point - currentHit.point;
+                    double distanceSq = dotProduct(toLight, toLight);
+                    double distance = std::sqrt(distanceSq);
+                    double sphereArea = 4.0 * M_PI * light.radius * light.radius;
+                    int totalLights = scene.pointLights.size() + scene.areaLights.size() + 
+                                      scene.lightSpheres.size() + scene.lightMeshes.size();
+                    if (sphereArea > 1e-10 && totalLights > 0) {
+                        double areaPDF = 1.0 / sphereArea / totalLights;
+                        double cosAtLight = 1.0;  // Approximation
+                        pdfLightBRDF = areaPDFToSolidAnglePDF(areaPDF, distance, cosAtLight);
+                    }
+                } else if (testHit.kind == Intersection::Kind::LightMesh) {
+                    const LightMesh& light = scene.lightMeshes[testHit.containerIndex];
+                    VectorFloatTriplet toLight = testHit.point - currentHit.point;
+                    double distanceSq = dotProduct(toLight, toLight);
+                    double distance = std::sqrt(distanceSq);
+                    int totalLights = scene.pointLights.size() + scene.areaLights.size() + 
+                                      scene.lightSpheres.size() + scene.lightMeshes.size();
+                    if (light.totalArea > 1e-10 && totalLights > 0) {
+                        double areaPDF = 1.0 / light.totalArea / totalLights;
+                        double cosAtLight = 1.0;  // Approximation
+                        pdfLightBRDF = areaPDFToSolidAnglePDF(areaPDF, distance, cosAtLight);
+                    }
+                }
+                
+                // MIS weight for BRDF sample
+                double wBRDF = 1.0;
+                if (!camera.misHeuristic.empty() && pdfLightBRDF > 1e-10) {
+                    wBRDF = misWeight(pdfBRDF_split, pdfLightBRDF, camera.misHeuristic);
+                }
+                
+                // Indirect light contribution: w_brdf * (L * BRDF * cos) / pdf_brdf
+                if (cosTheta_split > 1e-10 && pdfBRDF_split > 1e-10) {
+                    VectorFloatTriplet brdfCos = brdfValue_split * cosTheta_split;
+                    double invPdfBRDF = 1.0 / pdfBRDF_split;
+                    indirectContribution_split = emission * brdfCos * invPdfBRDF * wBRDF;
+                }
+            }
+            
+            // Accumulate indirect contribution for this split
+            indirectAccum = indirectAccum + indirectContribution_split;
+        }  // End of splitting loop
+        
+        // Average indirect contributions from splitting
+        if (numSplits > 1) {
+            double invSplits = 1.0 / numSplits;
+            indirectAccum = indirectAccum * invSplits;
+        }
+        
+        // Use first split's direction for path continuation
+        VectorFloatTriplet wi;  // Will be set below
+        double pdfBRDF;
+        VectorFloatTriplet brdfValue;
+        double cosTheta;
+        
+        // Sample direction for continuation (using first random numbers)
+        if (camera.importanceSampling) {
+            wi = sampleHemisphereCosine(N, xi1, xi2);
+            cosTheta = std::max(0.0, dotProduct(N, wi));
+            pdfBRDF = cosTheta / M_PI;
+        } else {
+            wi = sampleHemisphereUniform(N, xi1, xi2);
+            cosTheta = std::max(0.0, dotProduct(N, wi));
+            pdfBRDF = 1.0 / (2.0 * M_PI);
+        }
+        
+        // Evaluate BRDF for continuation direction
+        VectorFloatTriplet diffuse, specular;
+        brdfValue = brdf::evaluateBRDF(*material, brdf, N, wi, wo, diffuse, specular);
+        
+        // Add contributions (direct + averaged indirect from splitting)
+        L = L + throughput * (directContribution + indirectAccum);
+        
+        // Update throughput: throughput *= BRDF * cos(theta) / PDF
+        if (pdfBRDF > 1e-10 && cosTheta > 1e-10) {
+            VectorFloatTriplet brdfCos = brdfValue * cosTheta;
+            double invPdf = 1.0 / pdfBRDF;
+            throughput = throughput * brdfCos * invPdf;
+        } else {
+            break;  // Zero PDF, terminate path
+        }
+        
+        // Check for NaN/Inf in throughput
+        if (std::isnan(throughput.x) || std::isnan(throughput.y) || std::isnan(throughput.z) ||
+            std::isinf(throughput.x) || std::isinf(throughput.y) || std::isinf(throughput.z)) {
+            break;
+        }
+        
+        // Russian Roulette: probabilistically terminate path after minRecursionDepth
+        if (camera.russianRoulette && depth >= camera.minRecursionDepth) {
+            // Compute survival probability based on throughput
+            double throughputMax = std::max(throughput.x, std::max(throughput.y, throughput.z));
+            double survivalProb = std::min(std::max(throughputMax, 0.01), 0.99);  // Clamp to [0.01, 0.99]
+            
+            // Generate random number for Russian Roulette
+            double rrRandom;
+            if (depth == 0) {
+                rrRandom = std::fmod((currentRay.random1 + currentRay.random2) * 1000.0, 1.0);
+            } else {
+                double seedRR = currentRay.random1 * 1000.0 + depth * 41.0;
+                rrRandom = std::fmod(seedRR * 1103515245.0 + 12345.0, 2147483648.0) / 2147483648.0;
+                rrRandom = std::max(0.0, std::min(0.999999, rrRandom));
+            }
+            
+            if (rrRandom > survivalProb) {
+                // Terminate path
+                break;
+            }
+            
+            // Scale throughput by survival probability
+            double invSurvivalProb = 1.0 / survivalProb;
+            throughput = throughput * invSurvivalProb;
+        }
+        
+        // Create new ray for next bounce
+        currentRay = Ray(offsetPoint, wi, currentRay.depth + 1, false, false, false, 
+                        currentRay.time, 0.0, 0.0);  // Will need new random values for next bounce
+        
+        // Reset hit for next iteration
+        currentHit.hit = false;
+    }
+    
+    return L;
+}
+
 VectorFloatTriplet computePixelColor(const Scene& scene, Ray& ray, const Intersection& intersection) {
+    // Check if we should use path tracing
+    if (!scene.cameras.empty() && scene.currentCameraIndex < scene.cameras.size()) {
+        const Camera& camera = scene.cameras[scene.currentCameraIndex];
+        if (camera.renderer == "PathTracing") {
+            return computePathTracing(scene, camera, ray, intersection);
+        }
+    }
+    
+    // Default shading (original implementation)
     if (ray.depth > scene.maxRecursionDepth) {
         return VectorFloatTriplet{0.0, 0.0, 0.0};
     }
 
     if (intersection.hit) {
+        // *** FIX: If we hit an emissive object (LightMesh/LightSphere), return emission ***
+        if (isEmissiveObject(scene, intersection)) {
+            return getEmission(scene, intersection);
+        }
         return computeShading(scene, ray, intersection);
     }
 

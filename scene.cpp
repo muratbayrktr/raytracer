@@ -280,6 +280,123 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         verbose("[!] Skipping Lights Parsing. Reason: Not found in the scene file. Assigning default value: 0");
     }
 
+    // Parse BRDFs
+    if (scene.contains("BRDFs") && !scene["BRDFs"].is_null()) {
+        auto brdfs = scene["BRDFs"];
+        
+        // Parse OriginalBlinnPhong
+        if (brdfs.contains("OriginalBlinnPhong") && !brdfs["OriginalBlinnPhong"].is_null()) {
+            auto brdfArray = brdfs["OriginalBlinnPhong"];
+            if (brdfArray.is_array()) {
+                for (auto brdfData : brdfArray) {
+                    scene::BRDF newBRDF = parseBRDF(brdfData, scene::BRDFType::OriginalBlinnPhong);
+                    if (newBRDF._id != 0) {
+                        this->brdfs.push_back(newBRDF);
+                        this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                        verbose("[+] BRDF OriginalBlinnPhong Parsed: " + std::to_string(newBRDF._id));
+                    }
+                }
+            } else {
+                scene::BRDF newBRDF = parseBRDF(brdfArray, scene::BRDFType::OriginalBlinnPhong);
+                if (newBRDF._id != 0) {
+                    this->brdfs.push_back(newBRDF);
+                    this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                    verbose("[+] BRDF OriginalBlinnPhong Parsed: " + std::to_string(newBRDF._id));
+                }
+            }
+        }
+        
+        // Parse OriginalPhong
+        if (brdfs.contains("OriginalPhong") && !brdfs["OriginalPhong"].is_null()) {
+            auto brdfArray = brdfs["OriginalPhong"];
+            if (brdfArray.is_array()) {
+                for (auto brdfData : brdfArray) {
+                    scene::BRDF newBRDF = parseBRDF(brdfData, scene::BRDFType::OriginalPhong);
+                    if (newBRDF._id != 0) {
+                        this->brdfs.push_back(newBRDF);
+                        this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                        verbose("[+] BRDF OriginalPhong Parsed: " + std::to_string(newBRDF._id));
+                    }
+                }
+            } else {
+                scene::BRDF newBRDF = parseBRDF(brdfArray, scene::BRDFType::OriginalPhong);
+                if (newBRDF._id != 0) {
+                    this->brdfs.push_back(newBRDF);
+                    this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                    verbose("[+] BRDF OriginalPhong Parsed: " + std::to_string(newBRDF._id));
+                }
+            }
+        }
+        
+        // Parse ModifiedBlinnPhong
+        if (brdfs.contains("ModifiedBlinnPhong") && !brdfs["ModifiedBlinnPhong"].is_null()) {
+            auto brdfArray = brdfs["ModifiedBlinnPhong"];
+            if (brdfArray.is_array()) {
+                for (auto brdfData : brdfArray) {
+                    scene::BRDF newBRDF = parseBRDF(brdfData, scene::BRDFType::ModifiedBlinnPhong);
+                    if (newBRDF._id != 0) {
+                        this->brdfs.push_back(newBRDF);
+                        this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                        verbose("[+] BRDF ModifiedBlinnPhong Parsed: " + std::to_string(newBRDF._id));
+                    }
+                }
+            } else {
+                scene::BRDF newBRDF = parseBRDF(brdfArray, scene::BRDFType::ModifiedBlinnPhong);
+                if (newBRDF._id != 0) {
+                    this->brdfs.push_back(newBRDF);
+                    this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                    verbose("[+] BRDF ModifiedBlinnPhong Parsed: " + std::to_string(newBRDF._id));
+                }
+            }
+        }
+        
+        // Parse ModifiedPhong
+        if (brdfs.contains("ModifiedPhong") && !brdfs["ModifiedPhong"].is_null()) {
+            auto brdfArray = brdfs["ModifiedPhong"];
+            if (brdfArray.is_array()) {
+                for (auto brdfData : brdfArray) {
+                    scene::BRDF newBRDF = parseBRDF(brdfData, scene::BRDFType::ModifiedPhong);
+                    if (newBRDF._id != 0) {
+                        this->brdfs.push_back(newBRDF);
+                        this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                        verbose("[+] BRDF ModifiedPhong Parsed: " + std::to_string(newBRDF._id));
+                    }
+                }
+            } else {
+                scene::BRDF newBRDF = parseBRDF(brdfArray, scene::BRDFType::ModifiedPhong);
+                if (newBRDF._id != 0) {
+                    this->brdfs.push_back(newBRDF);
+                    this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                    verbose("[+] BRDF ModifiedPhong Parsed: " + std::to_string(newBRDF._id));
+                }
+            }
+        }
+        
+        // Parse TorranceSparrow
+        if (brdfs.contains("TorranceSparrow") && !brdfs["TorranceSparrow"].is_null()) {
+            auto brdfArray = brdfs["TorranceSparrow"];
+            if (brdfArray.is_array()) {
+                for (auto brdfData : brdfArray) {
+                    scene::BRDF newBRDF = parseBRDF(brdfData, scene::BRDFType::TorranceSparrow);
+                    if (newBRDF._id != 0) {
+                        this->brdfs.push_back(newBRDF);
+                        this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                        verbose("[+] BRDF TorranceSparrow Parsed: " + std::to_string(newBRDF._id));
+                    }
+                }
+            } else {
+                scene::BRDF newBRDF = parseBRDF(brdfArray, scene::BRDFType::TorranceSparrow);
+                if (newBRDF._id != 0) {
+                    this->brdfs.push_back(newBRDF);
+                    this->brdfIdToIndex[newBRDF._id] = this->brdfs.size() - 1;
+                    verbose("[+] BRDF TorranceSparrow Parsed: " + std::to_string(newBRDF._id));
+                }
+            }
+        }
+    } else {
+        verbose("[!] Skipping BRDFs Parsing. Reason: Not found in the scene file.");
+    }
+
     if (scene.contains("Materials") && !scene["Materials"].is_null()) {
         auto materials = scene["Materials"];
         auto materialDataArray = materials["Material"];
@@ -409,17 +526,63 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
                 this->vertices.insert(this->vertices.end(), vertices.begin(), vertices.end());
                 verbose("[+] Vertex Parsed: " + std::to_string(vertices.size()));
             }
+        } else if (vertexData.contains("_binaryFile") && !vertexData["_binaryFile"].is_null()) {
+            // Parse binary vertex data: 4-byte count + count*12 bytes (xyz floats)
+            std::string binaryFile = vertexData["_binaryFile"].get<std::string>();
+            std::string fullPath = this->baseDirectory + binaryFile;
+            std::ifstream file(fullPath, std::ios::binary);
+            if (file.is_open()) {
+                uint32_t count;
+                file.read(reinterpret_cast<char*>(&count), sizeof(count));
+                this->vertices.reserve(this->vertices.size() + count);
+                for (uint32_t i = 0; i < count; i++) {
+                    float x, y, z;
+                    file.read(reinterpret_cast<char*>(&x), sizeof(x));
+                    file.read(reinterpret_cast<char*>(&y), sizeof(y));
+                    file.read(reinterpret_cast<char*>(&z), sizeof(z));
+                    this->vertices.push_back(VectorFloatTriplet{(double)x, (double)y, (double)z});
+                }
+                file.close();
+                verbose("[+] Binary Vertex Parsed: " + std::to_string(count) + " vertices from " + binaryFile);
+            } else {
+                verbose("[!] Failed to open binary vertex file: " + fullPath);
+            }
         } else {
-            verbose("[!] Skipping VertexData Parsing. Reason: VertexData missing _data");
+            verbose("[!] Skipping VertexData Parsing. Reason: VertexData missing _data or _binaryFile");
         }
     }
 
     if (scene.contains("TexCoordData") && !scene["TexCoordData"].is_null()) {
-        try {
-            this->texCoords = parseTexCoordData(scene["TexCoordData"]);
-            verbose("[+] TexCoordData Parsed: " + std::to_string(this->texCoords.size()) + " UV pairs");
-        } catch (const std::exception& e) {
-            verbose("[!] Skipping TexCoordData Parsing. Reason: " + std::string(e.what()));
+        auto texCoordData = scene["TexCoordData"];
+        if (texCoordData.contains("_data") && !texCoordData["_data"].is_null()) {
+            try {
+                this->texCoords = parseTexCoordData(texCoordData);
+                verbose("[+] TexCoordData Parsed: " + std::to_string(this->texCoords.size()) + " UV pairs");
+            } catch (const std::exception& e) {
+                verbose("[!] Skipping TexCoordData Parsing. Reason: " + std::string(e.what()));
+            }
+        } else if (texCoordData.contains("_binaryFile") && !texCoordData["_binaryFile"].is_null()) {
+            // Parse binary texcoord data: 4-byte count + count*8 bytes (uv floats)
+            std::string binaryFile = texCoordData["_binaryFile"].get<std::string>();
+            std::string fullPath = this->baseDirectory + binaryFile;
+            std::ifstream file(fullPath, std::ios::binary);
+            if (file.is_open()) {
+                uint32_t count;
+                file.read(reinterpret_cast<char*>(&count), sizeof(count));
+                this->texCoords.reserve(this->texCoords.size() + count);
+                for (uint32_t i = 0; i < count; i++) {
+                    float u, v;
+                    file.read(reinterpret_cast<char*>(&u), sizeof(u));
+                    file.read(reinterpret_cast<char*>(&v), sizeof(v));
+                    this->texCoords.push_back(VectorFloatPair{(double)u, (double)v});
+                }
+                file.close();
+                verbose("[+] Binary TexCoord Parsed: " + std::to_string(count) + " UV pairs from " + binaryFile);
+            } else {
+                verbose("[!] Failed to open binary texcoord file: " + fullPath);
+            }
+        } else {
+            verbose("[!] Skipping TexCoordData Parsing. Reason: TexCoordData missing _data or _binaryFile");
         }
     }
 
@@ -611,6 +774,224 @@ void scene::Scene::loadSceneFromFile(const std::string& filename) {
         verbose("[+] Spheres Parsed: " + std::to_string(this->spheres.size()));
         verbose("[+] Planes Parsed: " + std::to_string(this->planes.size()));
         verbose("[+] MeshInstances Parsed: " + std::to_string(this->meshInstances.size()));
+        
+        // Parse LightSphere (emissive spheres)
+        if (objects.contains("LightSphere") && !objects["LightSphere"].is_null()) {
+            auto lightSphereArray = objects["LightSphere"];
+            if (lightSphereArray.is_array()) {
+                for (auto lightSphereData : lightSphereArray) {
+                    scene::LightSphere newLightSphere;
+                    newLightSphere._id = parseSingleValue<unsigned int>(lightSphereData["_id"]);
+                    
+                    // Parse Material if present
+                    if (lightSphereData.contains("Material") && !lightSphereData["Material"].is_null()) {
+                        unsigned int materialId = parseSingleValue<unsigned int>(lightSphereData["Material"]);
+                        newLightSphere.material = getMaterialById(materialId);
+                    } else {
+                        newLightSphere.material = nullptr;
+                    }
+                    
+                    // Parse Radiance
+                    if (lightSphereData.contains("Radiance") && !lightSphereData["Radiance"].is_null()) {
+                        newLightSphere.radiance = parseTriplet<VectorFloatTriplet>(lightSphereData["Radiance"]);
+                    } else {
+                        newLightSphere.radiance = VectorFloatTriplet{0, 0, 0};
+                    }
+                    
+                    // Parse Center and Radius (same as regular Sphere)
+                    if (lightSphereData.contains("Center")) {
+                        newLightSphere.center = parseSingleValue<unsigned int>(lightSphereData["Center"]);
+                        newLightSphere.center -= 1;  // Convert to 0-based
+                    }
+                    if (lightSphereData.contains("Radius")) {
+                        newLightSphere.radius = parseSingleValue<double>(lightSphereData["Radius"]);
+                    }
+                    
+                    // Parse transformations if present
+                    if (lightSphereData.contains("Transformations") && !lightSphereData["Transformations"].is_null()) {
+                        std::string transformStr = lightSphereData["Transformations"].get<std::string>();
+                        newLightSphere.transformations = parseTransformationString(transformStr);
+                        verbose("[+] LightSphere Transformations parsed: " + transformStr);
+                    }
+                    
+                    // Parse Textures if present
+                    if (lightSphereData.contains("Textures") && !lightSphereData["Textures"].is_null()) {
+                        std::string texturesStr = lightSphereData["Textures"].get<std::string>();
+                        std::istringstream stream(texturesStr);
+                        unsigned int textureId;
+                        while (stream >> textureId) {
+                            newLightSphere.textureIds.push_back(textureId);
+                        }
+                    }
+                    
+                    this->lightSpheres.push_back(newLightSphere);
+                    verbose("[+] LightSphere Parsed: " + std::to_string(newLightSphere._id));
+                }
+            } else {
+                scene::LightSphere newLightSphere;
+                newLightSphere._id = parseSingleValue<unsigned int>(lightSphereArray["_id"]);
+                
+                if (lightSphereArray.contains("Material") && !lightSphereArray["Material"].is_null()) {
+                    unsigned int materialId = parseSingleValue<unsigned int>(lightSphereArray["Material"]);
+                    newLightSphere.material = getMaterialById(materialId);
+                } else {
+                    newLightSphere.material = nullptr;
+                }
+                
+                if (lightSphereArray.contains("Radiance") && !lightSphereArray["Radiance"].is_null()) {
+                    newLightSphere.radiance = parseTriplet<VectorFloatTriplet>(lightSphereArray["Radiance"]);
+                } else {
+                    newLightSphere.radiance = VectorFloatTriplet{0, 0, 0};
+                }
+                
+                if (lightSphereArray.contains("Center")) {
+                    newLightSphere.center = parseSingleValue<unsigned int>(lightSphereArray["Center"]);
+                    newLightSphere.center -= 1;
+                }
+                if (lightSphereArray.contains("Radius")) {
+                    newLightSphere.radius = parseSingleValue<double>(lightSphereArray["Radius"]);
+                }
+                
+                if (lightSphereArray.contains("Transformations") && !lightSphereArray["Transformations"].is_null()) {
+                    std::string transformStr = lightSphereArray["Transformations"].get<std::string>();
+                    newLightSphere.transformations = parseTransformationString(transformStr);
+                }
+                
+                if (lightSphereArray.contains("Textures") && !lightSphereArray["Textures"].is_null()) {
+                    std::string texturesStr = lightSphereArray["Textures"].get<std::string>();
+                    std::istringstream stream(texturesStr);
+                    unsigned int textureId;
+                    while (stream >> textureId) {
+                        newLightSphere.textureIds.push_back(textureId);
+                    }
+                }
+                
+                this->lightSpheres.push_back(newLightSphere);
+                verbose("[+] LightSphere Parsed: " + std::to_string(newLightSphere._id));
+            }
+        }
+        
+        // Parse LightMesh (emissive meshes)
+        if (objects.contains("LightMesh") && !objects["LightMesh"].is_null()) {
+            auto lightMeshArray = objects["LightMesh"];
+            if (lightMeshArray.is_array()) {
+                for (auto lightMeshData : lightMeshArray) {
+                    scene::LightMesh newLightMesh;
+                    newLightMesh._id = parseSingleValue<unsigned int>(lightMeshData["_id"]);
+                    
+                    // Parse Material if present
+                    if (lightMeshData.contains("Material") && !lightMeshData["Material"].is_null()) {
+                        unsigned int materialId = parseSingleValue<unsigned int>(lightMeshData["Material"]);
+                        newLightMesh.material = getMaterialById(materialId);
+                    } else {
+                        newLightMesh.material = nullptr;
+                    }
+                    
+                    // Parse Radiance
+                    if (lightMeshData.contains("Radiance") && !lightMeshData["Radiance"].is_null()) {
+                        newLightMesh.radiance = parseTriplet<VectorFloatTriplet>(lightMeshData["Radiance"]);
+                    } else {
+                        newLightMesh.radiance = VectorFloatTriplet{0, 0, 0};
+                    }
+                    
+                    // Parse shading mode
+                    if (lightMeshData.contains("_shadingMode") && !lightMeshData["_shadingMode"].is_null()) {
+                        newLightMesh.shadingMode = tolower(lightMeshData["_shadingMode"].get<std::string>()[0]);
+                    }
+                    
+                    // Parse Faces (same as regular Mesh)
+                    if (lightMeshData.contains("Faces") && !lightMeshData["Faces"].is_null()) {
+                        const json& facesData = lightMeshData["Faces"];
+                        if (facesData.contains("_data") && !facesData["_data"].is_null()) {
+                            FaceParseResult faceResult = parseFacesWithOffsets(facesData);
+                            newLightMesh.faces = faceResult.vertexFaces;
+                            newLightMesh.texCoordIndices = faceResult.texCoordFaces;
+                        } else if (facesData.contains("_plyFile") && !facesData["_plyFile"].is_null()) {
+                            std::string plyFile = facesData["_plyFile"].get<std::string>();
+                            std::string fullPath = this->baseDirectory + plyFile;
+                            FaceParseResult faceResult = parsePLYFile(fullPath, this->vertices, this->texCoords);
+                            newLightMesh.faces = faceResult.vertexFaces;
+                            newLightMesh.texCoordIndices = faceResult.texCoordFaces;
+                        }
+                    }
+                    
+                    // Parse transformations if present
+                    if (lightMeshData.contains("Transformations") && !lightMeshData["Transformations"].is_null()) {
+                        std::string transformStr = lightMeshData["Transformations"].get<std::string>();
+                        newLightMesh.transformations = parseTransformationString(transformStr);
+                        verbose("[+] LightMesh Transformations parsed: " + transformStr);
+                    }
+                    
+                    // Parse Textures if present
+                    if (lightMeshData.contains("Textures") && !lightMeshData["Textures"].is_null()) {
+                        std::string texturesStr = lightMeshData["Textures"].get<std::string>();
+                        std::istringstream stream(texturesStr);
+                        unsigned int textureId;
+                        while (stream >> textureId) {
+                            newLightMesh.textureIds.push_back(textureId);
+                        }
+                    }
+                    
+                    this->lightMeshes.push_back(newLightMesh);
+                    verbose("[+] LightMesh Parsed: " + std::to_string(newLightMesh._id));
+                }
+            } else {
+                scene::LightMesh newLightMesh;
+                newLightMesh._id = parseSingleValue<unsigned int>(lightMeshArray["_id"]);
+                
+                if (lightMeshArray.contains("Material") && !lightMeshArray["Material"].is_null()) {
+                    unsigned int materialId = parseSingleValue<unsigned int>(lightMeshArray["Material"]);
+                    newLightMesh.material = getMaterialById(materialId);
+                } else {
+                    newLightMesh.material = nullptr;
+                }
+                
+                if (lightMeshArray.contains("Radiance") && !lightMeshArray["Radiance"].is_null()) {
+                    newLightMesh.radiance = parseTriplet<VectorFloatTriplet>(lightMeshArray["Radiance"]);
+                } else {
+                    newLightMesh.radiance = VectorFloatTriplet{0, 0, 0};
+                }
+                
+                if (lightMeshArray.contains("_shadingMode") && !lightMeshArray["_shadingMode"].is_null()) {
+                    newLightMesh.shadingMode = tolower(lightMeshArray["_shadingMode"].get<std::string>()[0]);
+                }
+                
+                if (lightMeshArray.contains("Faces") && !lightMeshArray["Faces"].is_null()) {
+                    const json& facesData = lightMeshArray["Faces"];
+                    if (facesData.contains("_data") && !facesData["_data"].is_null()) {
+                        FaceParseResult faceResult = parseFacesWithOffsets(facesData);
+                        newLightMesh.faces = faceResult.vertexFaces;
+                        newLightMesh.texCoordIndices = faceResult.texCoordFaces;
+                    } else if (facesData.contains("_plyFile") && !facesData["_plyFile"].is_null()) {
+                        std::string plyFile = facesData["_plyFile"].get<std::string>();
+                        std::string fullPath = this->baseDirectory + plyFile;
+                        FaceParseResult faceResult = parsePLYFile(fullPath, this->vertices, this->texCoords);
+                        newLightMesh.faces = faceResult.vertexFaces;
+                        newLightMesh.texCoordIndices = faceResult.texCoordFaces;
+                    }
+                }
+                
+                if (lightMeshArray.contains("Transformations") && !lightMeshArray["Transformations"].is_null()) {
+                    std::string transformStr = lightMeshArray["Transformations"].get<std::string>();
+                    newLightMesh.transformations = parseTransformationString(transformStr);
+                }
+                
+                if (lightMeshArray.contains("Textures") && !lightMeshArray["Textures"].is_null()) {
+                    std::string texturesStr = lightMeshArray["Textures"].get<std::string>();
+                    std::istringstream stream(texturesStr);
+                    unsigned int textureId;
+                    while (stream >> textureId) {
+                        newLightMesh.textureIds.push_back(textureId);
+                    }
+                }
+                
+                this->lightMeshes.push_back(newLightMesh);
+                verbose("[+] LightMesh Parsed: " + std::to_string(newLightMesh._id));
+            }
+        }
+        
+        verbose("[+] LightSpheres Parsed: " + std::to_string(this->lightSpheres.size()));
+        verbose("[+] LightMeshes Parsed: " + std::to_string(this->lightMeshes.size()));
     }
 
     verbose("================================================");
@@ -628,22 +1009,58 @@ scene::Camera scene::parseCamera(const json& cameraData) {
     scene::Camera newCamera = scene::Camera();
     switch (cameraType) {
         case 1: {
-            newCamera._id = parseSingleValue<unsigned int>(cameraData["_id"]);
-            newCamera.position = parseTriplet<VectorFloatTriplet>(cameraData["Position"]);
-            newCamera.up = parseTriplet<VectorFloatTriplet>(cameraData["Up"]);
-            newCamera.nearDistance = parseSingleValue<double>(cameraData["NearDistance"]);
-            newCamera.imageResolution = parsePair<VectorIntPair>(cameraData["ImageResolution"]);
-            newCamera.imageName = cameraData["ImageName"].get<std::string>();
+            if (cameraData.contains("_id") && !cameraData["_id"].is_null()) {
+                newCamera._id = parseSingleValue<unsigned int>(cameraData["_id"]);
+            }
+            if (cameraData.contains("Position") && !cameraData["Position"].is_null()) {
+                newCamera.position = parseTriplet<VectorFloatTriplet>(cameraData["Position"]);
+            }
+            if (cameraData.contains("Up") && !cameraData["Up"].is_null()) {
+                newCamera.up = parseTriplet<VectorFloatTriplet>(cameraData["Up"]);
+            }
+            if (cameraData.contains("NearDistance") && !cameraData["NearDistance"].is_null()) {
+                newCamera.nearDistance = parseSingleValue<double>(cameraData["NearDistance"]);
+            }
+            if (cameraData.contains("ImageResolution") && !cameraData["ImageResolution"].is_null()) {
+                newCamera.imageResolution = parsePair<VectorIntPair>(cameraData["ImageResolution"]);
+            }
+            if (cameraData.contains("ImageName") && !cameraData["ImageName"].is_null()) {
+                newCamera.imageName = cameraData["ImageName"].get<std::string>();
+            }
             // Calculate the gaze vector, nearplane
-            // Gaze: GazePoint - Position
-            VectorFloatTriplet gazePoint = parseTriplet<VectorFloatTriplet>(cameraData["GazePoint"]);
-            VectorFloatTriplet gaze = normalize(gazePoint - newCamera.position);
-            newCamera.gaze = gaze;
+            // Gaze: GazePoint - Position OR directly from Gaze field
+            if (cameraData.contains("GazePoint") && !cameraData["GazePoint"].is_null()) {
+                VectorFloatTriplet gazePoint = parseTriplet<VectorFloatTriplet>(cameraData["GazePoint"]);
+                VectorFloatTriplet gazeVec = gazePoint - newCamera.position;
+                double gazeLen = std::sqrt(dotProduct(gazeVec, gazeVec));
+                if (gazeLen > 1e-10) {
+                    newCamera.gaze = gazeVec * (1.0 / gazeLen);
+                } else {
+                    // Fallback: use default gaze direction
+                    newCamera.gaze = VectorFloatTriplet{0, 0, -1};
+                    verbose("[!] GazePoint equals Position, using default gaze direction");
+                }
+            } else if (cameraData.contains("Gaze") && !cameraData["Gaze"].is_null()) {
+                // Direct gaze vector specified
+                newCamera.gaze = parseTriplet<VectorFloatTriplet>(cameraData["Gaze"]);
+                // Normalize the gaze vector
+                double gazeLen = std::sqrt(dotProduct(newCamera.gaze, newCamera.gaze));
+                if (gazeLen > 1e-10) {
+                    newCamera.gaze = newCamera.gaze * (1.0 / gazeLen);
+                } else {
+                    newCamera.gaze = VectorFloatTriplet{0, 0, -1};
+                    verbose("[!] Gaze vector is zero, using default gaze direction");
+                }
+            }
 
             // NearPlane:
             // FovY is the vertical field of view in degrees. We compute the near-plane
             // height from it, then use the aspect ratio to get the width.
-            double fovY = parseSingleValue<double>(cameraData["FovY"]) * M_PI / 180.0; // convert degrees to radians
+            double fovY = 45.0;  // Default
+            if (cameraData.contains("FovY") && !cameraData["FovY"].is_null()) {
+                fovY = parseSingleValue<double>(cameraData["FovY"]);
+            }
+            fovY = fovY * M_PI / 180.0; // convert degrees to radians
             double nearPlaneHeight = 2.0 * tan(fovY / 2.0) * newCamera.nearDistance;
             double aspect = static_cast<double>(newCamera.imageResolution.x) / static_cast<double>(newCamera.imageResolution.y);
             double nearPlaneWidth = nearPlaneHeight * aspect;
@@ -663,13 +1080,27 @@ scene::Camera scene::parseCamera(const json& cameraData) {
         case 0:
         default: {
             newCamera._id = parseSingleValue<unsigned int>(cameraData["_id"]);
-            newCamera.position = parseTriplet<VectorFloatTriplet>(cameraData["Position"]);
-            newCamera.gaze = parseTriplet<VectorFloatTriplet>(cameraData["Gaze"]);
-            newCamera.up = parseTriplet<VectorFloatTriplet>(cameraData["Up"]);
-            newCamera.nearPlane = parseQuad<VectorFloatQuad>(cameraData["NearPlane"]);
-            newCamera.nearDistance = parseSingleValue<double>(cameraData["NearDistance"]);
-            newCamera.imageResolution = parsePair<VectorIntPair>(cameraData["ImageResolution"]);
-            newCamera.imageName = cameraData["ImageName"].get<std::string>();
+            if (cameraData.contains("Position") && !cameraData["Position"].is_null()) {
+                newCamera.position = parseTriplet<VectorFloatTriplet>(cameraData["Position"]);
+            }
+            if (cameraData.contains("Gaze") && !cameraData["Gaze"].is_null()) {
+                newCamera.gaze = parseTriplet<VectorFloatTriplet>(cameraData["Gaze"]);
+            }
+            if (cameraData.contains("Up") && !cameraData["Up"].is_null()) {
+                newCamera.up = parseTriplet<VectorFloatTriplet>(cameraData["Up"]);
+            }
+            if (cameraData.contains("NearPlane") && !cameraData["NearPlane"].is_null()) {
+                newCamera.nearPlane = parseQuad<VectorFloatQuad>(cameraData["NearPlane"]);
+            }
+            if (cameraData.contains("NearDistance") && !cameraData["NearDistance"].is_null()) {
+                newCamera.nearDistance = parseSingleValue<double>(cameraData["NearDistance"]);
+            }
+            if (cameraData.contains("ImageResolution") && !cameraData["ImageResolution"].is_null()) {
+                newCamera.imageResolution = parsePair<VectorIntPair>(cameraData["ImageResolution"]);
+            }
+            if (cameraData.contains("ImageName") && !cameraData["ImageName"].is_null()) {
+                newCamera.imageName = cameraData["ImageName"].get<std::string>();
+            }
             break;
         }
     }
@@ -740,6 +1171,79 @@ scene::Camera scene::parseCamera(const json& cameraData) {
             newCamera.tonemapSettings.push_back(settings);
             verbose("[+] Camera Tonemap parsed: " + settings.tmo + " with extension " + settings.extension);
         }
+    }
+    
+    // Parse Renderer if present (PathTracing or empty for default)
+    if (cameraData.contains("Renderer") && !cameraData["Renderer"].is_null()) {
+        newCamera.renderer = cameraData["Renderer"].get<std::string>();
+        verbose("[+] Camera Renderer parsed: " + newCamera.renderer);
+    } else {
+        newCamera.renderer = "";
+        verbose("[!] Camera Renderer not found, using default shading");
+    }
+    
+    // Parse RendererParams if present (space-separated options)
+    if (cameraData.contains("RendererParams") && !cameraData["RendererParams"].is_null()) {
+        std::string paramsStr = cameraData["RendererParams"].get<std::string>();
+        std::istringstream paramsStream(paramsStr);
+        std::string param;
+        while (paramsStream >> param) {
+            if (param == "ImportanceSampling") {
+                newCamera.importanceSampling = true;
+                verbose("[+] Camera RendererParams: ImportanceSampling enabled");
+            } else if (param == "NextEventEstimation") {
+                newCamera.nextEventEstimation = true;
+                verbose("[+] Camera RendererParams: NextEventEstimation enabled");
+            } else if (param == "MIS_BALANCE") {
+                newCamera.misHeuristic = "balance";
+                verbose("[+] Camera RendererParams: MIS_BALANCE (balance heuristic)");
+            } else if (param == "MIS_POWER") {
+                newCamera.misHeuristic = "power";
+                verbose("[+] Camera RendererParams: MIS_POWER (power heuristic)");
+            } else if (param == "MIS_01") {
+                newCamera.misHeuristic = "01";
+                verbose("[+] Camera RendererParams: MIS_01 (01 heuristic)");
+            } else if (param == "RussianRoulette") {
+                newCamera.russianRoulette = true;
+                verbose("[+] Camera RendererParams: RussianRoulette enabled");
+            }
+        }
+    }
+    
+    // Parse MaxRecursionDepth if present (per-camera override)
+    if (cameraData.contains("MaxRecursionDepth") && !cameraData["MaxRecursionDepth"].is_null()) {
+        newCamera.maxRecursionDepth = parseSingleValue<int>(cameraData["MaxRecursionDepth"]);
+        verbose("[+] Camera MaxRecursionDepth parsed: " + std::to_string(newCamera.maxRecursionDepth));
+    } else {
+        // Use scene default if not specified
+        verbose("[!] Camera MaxRecursionDepth not found, will use scene default");
+    }
+    
+    // Parse MinRecursionDepth if present (for Russian Roulette)
+    if (cameraData.contains("MinRecursionDepth") && !cameraData["MinRecursionDepth"].is_null()) {
+        newCamera.minRecursionDepth = parseSingleValue<int>(cameraData["MinRecursionDepth"]);
+        verbose("[+] Camera MinRecursionDepth parsed: " + std::to_string(newCamera.minRecursionDepth));
+    } else {
+        newCamera.minRecursionDepth = 0;
+        verbose("[!] Camera MinRecursionDepth not found, using default: 0");
+    }
+    
+    // Parse SplittingFactor if present
+    if (cameraData.contains("SplittingFactor") && !cameraData["SplittingFactor"].is_null()) {
+        newCamera.splittingFactor = parseSingleValue<int>(cameraData["SplittingFactor"]);
+        verbose("[+] Camera SplittingFactor parsed: " + std::to_string(newCamera.splittingFactor));
+    } else {
+        newCamera.splittingFactor = 1;
+        verbose("[!] Camera SplittingFactor not found, using default: 1");
+    }
+    
+    // Parse SampleMaxVal if present (clamping threshold)
+    if (cameraData.contains("SampleMaxVal") && !cameraData["SampleMaxVal"].is_null()) {
+        newCamera.sampleMaxVal = parseSingleValue<double>(cameraData["SampleMaxVal"]);
+        verbose("[+] Camera SampleMaxVal parsed: " + std::to_string(newCamera.sampleMaxVal));
+    } else {
+        newCamera.sampleMaxVal = 0.0;
+        verbose("[!] Camera SampleMaxVal not found, no clamping (0.0)");
     }
     
     return newCamera;
@@ -888,7 +1392,46 @@ scene::Material scene::parseMaterial(const json& materialData) {
         newMaterial.roughness = 0.0;
     }
     
+    // Parse _BRDF if present (reference to BRDF definition)
+    if (materialData.contains("_BRDF") && !materialData["_BRDF"].is_null()) {
+        newMaterial.brdfId = parseSingleValue<unsigned int>(materialData["_BRDF"]);
+        verbose("[+] Material _BRDF parsed: " + std::to_string(newMaterial.brdfId));
+    } else {
+        newMaterial.brdfId = 0;  // Default: use OriginalBlinnPhong
+    }
+    
     return newMaterial;
+}
+
+scene::BRDF scene::parseBRDF(const json& brdfData, scene::BRDFType type) {
+    scene::BRDF newBRDF;
+    newBRDF._id = parseSingleValue<unsigned int>(brdfData["_id"]);
+    newBRDF.type = type;
+    
+    // Parse Exponent
+    if (brdfData.contains("Exponent") && !brdfData["Exponent"].is_null()) {
+        newBRDF.exponent = parseSingleValue<double>(brdfData["Exponent"]);
+    } else {
+        newBRDF.exponent = 1.0;
+    }
+    
+    // Parse _normalized flag
+    if (brdfData.contains("_normalized") && !brdfData["_normalized"].is_null()) {
+        std::string normalizedStr = brdfData["_normalized"].get<std::string>();
+        newBRDF.normalized = (normalizedStr == "true" || normalizedStr == "True" || normalizedStr == "TRUE" || normalizedStr == "1");
+    } else {
+        newBRDF.normalized = false;
+    }
+    
+    // Parse kdfresnel for TorranceSparrow
+    if (type == scene::BRDFType::TorranceSparrow && brdfData.contains("kdfresnel") && !brdfData["kdfresnel"].is_null()) {
+        std::string kdfresnelStr = brdfData["kdfresnel"].get<std::string>();
+        newBRDF.kdFresnel = (kdfresnelStr == "true" || kdfresnelStr == "True" || kdfresnelStr == "TRUE" || kdfresnelStr == "1");
+    } else {
+        newBRDF.kdFresnel = false;
+    }
+    
+    return newBRDF;
 }
 
 std::vector<scene::VectorFloatTriplet> scene::parseVertex(const json& vertexData) {
@@ -1067,6 +1610,27 @@ void scene::Scene::parseSpecificAttributes<scene::Mesh>(scene::Mesh& object, con
             FaceParseResult faceResult = parsePLYFile(fullPath, this->vertices, this->texCoords);
             object.faces = faceResult.vertexFaces;
             object.texCoordIndices = faceResult.texCoordFaces;
+        } else if (facesData.contains("_binaryFile") && !facesData["_binaryFile"].is_null()) {
+            // Parse binary face data: 4-byte count + count*12 bytes (3 uint32 per triangle)
+            std::string binaryFile = facesData["_binaryFile"].get<std::string>();
+            std::string fullPath = this->baseDirectory + binaryFile;
+            std::ifstream file(fullPath, std::ios::binary);
+            if (file.is_open()) {
+                uint32_t count;
+                file.read(reinterpret_cast<char*>(&count), sizeof(count));
+                object.faces.reserve(count);
+                for (uint32_t i = 0; i < count; i++) {
+                    uint32_t v0, v1, v2;
+                    file.read(reinterpret_cast<char*>(&v0), sizeof(v0));
+                    file.read(reinterpret_cast<char*>(&v1), sizeof(v1));
+                    file.read(reinterpret_cast<char*>(&v2), sizeof(v2));
+                    // Binary files are typically 0-indexed, no offset needed
+                    object.faces.push_back(VectorIntTriplet{(int)v0, (int)v1, (int)v2});
+                    // Also set texture coordinates if available (same indices for now)
+                    object.texCoordIndices.push_back(VectorIntTriplet{(int)v0, (int)v1, (int)v2});
+                }
+                file.close();
+            }
         }
     }
     
@@ -1173,6 +1737,14 @@ scene::Material* scene::Scene::getMaterialById(unsigned int id) {
     auto it = materialIdToIndex.find(id);
     if (it != materialIdToIndex.end()) {
         return &materials[it->second];
+    }
+    return nullptr;
+}
+
+const scene::BRDF* scene::Scene::getBRDFById(unsigned int id) const {
+    auto it = brdfIdToIndex.find(id);
+    if (it != brdfIdToIndex.end()) {
+        return &brdfs[it->second];
     }
     return nullptr;
 }

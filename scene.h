@@ -111,6 +111,17 @@ namespace scene {
         //   z    : motion blur time in [0,1)
         //   w, v : extra random dims reused for lens/roughness/area lights
         VectorFloatPenta* samples = nullptr;
+        
+        // Path tracing settings
+        std::string renderer = "";  // "PathTracing" or "" (default shading)
+        bool importanceSampling = false;
+        bool nextEventEstimation = false;
+        std::string misHeuristic = "";  // "balance", "power", "01"
+        bool russianRoulette = false;
+        int maxRecursionDepth = 6;
+        int minRecursionDepth = 0;
+        int splittingFactor = 1;
+        double sampleMaxVal = 0.0;  // 0 = no clamping
     };
 
     struct PointLight {
@@ -159,6 +170,22 @@ namespace scene {
         VectorFloatTriplet intensity;
     };
 
+    enum class BRDFType {
+        OriginalBlinnPhong,
+        OriginalPhong,
+        ModifiedBlinnPhong,
+        ModifiedPhong,
+        TorranceSparrow
+    };
+
+    struct BRDF {
+        unsigned int _id;
+        BRDFType type;
+        double exponent = 1.0;
+        bool normalized = false;
+        bool kdFresnel = false;  // For TorranceSparrow: use (1-F)*kd/pi instead of kd/pi
+    };
+
     struct Material {
         unsigned int _id;
         VectorFloatTriplet ambientReflectance;
@@ -172,6 +199,7 @@ namespace scene {
         double absorptionIndex = 0.0;
         VectorFloatTriplet absorptionCoefficient = {0, 0, 0};
         double roughness = 0.0;  // Roughness for mirrors, conductors, and dielectrics
+        unsigned int brdfId = 0;  // 0 = use default (OriginalBlinnPhong)
     };
 
     struct Image {
@@ -271,6 +299,21 @@ namespace scene {
         int baseMeshIndex = -1;
     };
 
+    struct LightSphere : public Object {
+        unsigned int center;
+        double radius;
+        VectorFloatTriplet radiance;
+    };
+
+    struct LightMesh : public Object {
+        char shadingMode = 'f';
+        std::vector<VectorIntTriplet> faces;  // Vertex indices
+        std::vector<VectorIntTriplet> texCoordIndices;  // Texture coordinate indices
+        VectorFloatTriplet radiance;
+        double totalArea = 0.0;  // Precomputed for sampling
+        std::vector<double> cdfTriangleAreas;  // For importance sampling (cumulative distribution function)
+    };
+
     struct Scene {
         VectorFloatTriplet backgroundColor;
         double shadowRayEpsilon;
@@ -285,12 +328,16 @@ namespace scene {
         std::vector<SphericalDirectionalLight> sphericalDirectionalLights;
         std::vector<Material> materials;
         std::map<unsigned int, size_t> materialIdToIndex;
+        std::vector<BRDF> brdfs;
+        std::map<unsigned int, size_t> brdfIdToIndex;
         std::vector<VectorFloatTriplet> vertices;
         std::vector<Mesh> meshes;
         std::vector<Triangle> triangles;
         std::vector<Sphere> spheres;
         std::vector<Plane> planes;
         std::vector<MeshInstance> meshInstances;
+        std::vector<LightSphere> lightSpheres;
+        std::vector<LightMesh> lightMeshes;
         
         // Transformation storage
         std::vector<Translation> translations;
@@ -326,6 +373,7 @@ namespace scene {
         void loadSceneFromFile(const std::string& filename);
         
         Material* getMaterialById(unsigned int id);
+        const BRDF* getBRDFById(unsigned int id) const;
         const Image* getImageById(unsigned int id) const;
         const TextureMap* getTextureMapById(unsigned int id) const;
         
@@ -368,6 +416,7 @@ namespace scene {
     SpotLight parseSpotLight(const json& spotLightData);
     SphericalDirectionalLight parseSphericalDirectionalLight(const json& sphericalDirectionalLightData);
     Material parseMaterial(const json& materialData);
+    BRDF parseBRDF(const json& brdfData, BRDFType type);
     std::vector<VectorFloatTriplet> parseVertex(const json& vertexData);
     
     Object parseObject(const json& objectData);
@@ -435,7 +484,7 @@ namespace scene {
         VectorFloatTriplet shadingNormal;
         
 
-        enum class Kind { None, Plane, Sphere, Triangle, Mesh, AreaLight } kind = Kind::None;
+        enum class Kind { None, Plane, Sphere, Triangle, Mesh, AreaLight, LightSphere, LightMesh } kind = Kind::None;
         int containerIndex = -1;
         int faceIndex = -1;
         
